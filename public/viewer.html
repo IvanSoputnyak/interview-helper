@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Interview Helper - Viewer</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <h1>Interview Helper POC (Viewer Device)</h1>
+      <p class="muted">
+        This page auto-updates when a new screenshot is analyzed.
+      </p>
+
+      <div class="card">
+        <div><strong>Last updated:</strong> <span id="updatedAt">-</span></div>
+        <div>
+          <strong>Content type:</strong> <span id="contentType">unknown</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Summary</h3>
+        <div id="summary" class="result-block">Waiting for first analysis...</div>
+      </div>
+
+      <div class="card">
+        <h3>Suggested Solution</h3>
+        <div id="solution" class="result-block"></div>
+        <button id="improveBtn">Improve solution</button>
+        <div id="improveStatus" class="muted"></div>
+      </div>
+
+      <div class="card">
+        <h3>Code Snippet</h3>
+        <pre id="codeSnippet" class="result-block"></pre>
+      </div>
+
+      <div class="card">
+        <h3>Why this algorithm</h3>
+        <div id="algorithmWhy" class="result-block"></div>
+        <div><strong>Time:</strong> <span id="timeComplexity"></span></div>
+        <div><strong>Space:</strong> <span id="spaceComplexity"></span></div>
+      </div>
+
+      <div class="card">
+        <h3>Short explanation</h3>
+        <div id="explanation" class="result-block"></div>
+      </div>
+
+      <div class="card">
+        <h3>History</h3>
+        <div id="history" class="result-block">No history yet.</div>
+      </div>
+    </main>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/viewer.js"></script>
+  </body>
+</html>
