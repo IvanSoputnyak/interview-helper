@@ -1,6 +1,7 @@
 import AppKit
 import Carbon
 import CoreGraphics
+import Darwin
 import Foundation
 
 /// Sent to `/api/analyze` when unlock is OFF, or custom text empty while unlocked.
@@ -25,6 +26,13 @@ private enum UDKeys {
     static let hasShownMenuBarHint = "IH.hasShownMenuBarHint"
 }
 
+private extension String {
+    /// Wrap for safe inclusion inside a single-quoted POSIX shell argument.
+    var shellSingleQuoted: String {
+        "'" + replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+}
+
 private enum TraySymbol {
     static func menuBarIcon() -> NSImage? {
         let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
@@ -36,6 +44,163 @@ private enum TraySymbol {
         }
         img.isTemplate = true
         return img
+    }
+}
+
+/// When `IH_SERVER_BASE_URL` is unset: `http://<Bonjour-or-LAN-IPv4>:<port>` so copied viewer links work on iPad with no manual edits.
+/// Port matches `IH_SERVER_PORT`, else `PORT` from `projectRoot/.env`, else 3000 (same defaults as `server.js`).
+private enum ServerBaseURLResolver {
+    private static let iffUp: UInt32 = 1
+    private static let iffLoopback: UInt32 = 0x8
+
+    static func resolvedString(projectRoot: String) -> String {
+        let env = ProcessInfo.processInfo.environment
+        if let raw = env["IH_SERVER_BASE_URL"]?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
+            return raw
+        }
+        let port = inferredPort(projectRoot: projectRoot, env: env)
+        if let host = mDNSHostName() {
+            return "http://\(host):\(port)"
+        }
+        if let ip = primaryLANIPv4String() {
+            return "http://\(ip):\(port)"
+        }
+        return "http://127.0.0.1:\(port)"
+    }
+
+    private static func inferredPort(projectRoot: String, env: [String: String]) -> Int {
+        if let p = env["IH_SERVER_PORT"].flatMap({ Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }),
+           (1 ... 65_535).contains(p) {
+            return p
+        }
+        if let p = portFromDotEnv(projectRoot: projectRoot) {
+            return p
+        }
+        return 3000
+    }
+
+    private static func portFromDotEnv(projectRoot: String) -> Int? {
+        let path = URL(fileURLWithPath: projectRoot, isDirectory: true).appendingPathComponent(".env").path
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)), data.count < 512_000,
+              let text = String(data: data, encoding: .utf8)
+        else {
+            return nil
+        }
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            let t = line.trimmingCharacters(in: .whitespaces)
+            if t.hasPrefix("#") || t.isEmpty {
+                continue
+            }
+            let parts = t.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+            guard parts.count == 2 else {
+                continue
+            }
+            guard parts[0].trimmingCharacters(in: .whitespaces).uppercased() == "PORT" else {
+                continue
+            }
+            var v = String(parts[1]).trimmingCharacters(in: .whitespaces)
+            if v.count >= 2, v.first == "\"", v.last == "\"" {
+                v = String(v.dropFirst().dropLast())
+            } else if v.count >= 2, v.first == "'", v.last == "'" {
+                v = String(v.dropFirst().dropLast())
+            }
+            if let n = Int(v), (1 ... 65_535).contains(n) {
+                return n
+            }
+        }
+        return nil
+    }
+
+    /// Short Bonjour name (`My-Mac.local`) for same-LAN devices; avoids guessing a numeric IP when mDNS works.
+    private static func mDNSHostName() -> String? {
+        let raw = ProcessInfo.processInfo.hostName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw.isEmpty || raw.hasPrefix("localhost") {
+            return nil
+        }
+        if raw.contains(".") && !raw.hasSuffix(".local") {
+            return nil
+        }
+        if raw.hasSuffix(".local") {
+            return raw
+        }
+        return "\(raw).local"
+    }
+
+    private static func primaryLANIPv4String() -> String? {
+        var ifaddr: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&ifaddr) == 0, let first = ifaddr else {
+            return nil
+        }
+        defer { freeifaddrs(ifaddr) }
+
+        var scored: [(ip: String, score: Int)] = []
+        var ptr: UnsafeMutablePointer<ifaddrs>? = first
+
+        while let ifa = ptr {
+            defer { ptr = ifa.pointee.ifa_next }
+
+            let name = String(cString: ifa.pointee.ifa_name)
+            let flags = UInt32(ifa.pointee.ifa_flags)
+            if (flags & iffUp) == 0 {
+                continue
+            }
+            if (flags & iffLoopback) != 0 {
+                continue
+            }
+
+            guard let addr = ifa.pointee.ifa_addr else {
+                continue
+            }
+            guard addr.pointee.sa_family == UInt8(AF_INET) else {
+                continue
+            }
+
+            var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            let sockLen = socklen_t(addr.pointee.sa_len)
+            guard
+                getnameinfo(
+                    addr,
+                    sockLen,
+                    &hostname,
+                    socklen_t(hostname.count),
+                    nil,
+                    0,
+                    NI_NUMERICHOST
+                ) == 0
+            else {
+                continue
+            }
+
+            let ipBytes = hostname.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+            let ip = String(decoding: ipBytes, as: UTF8.self)
+            if ip.isEmpty || ip.hasPrefix("127.") || ip.hasPrefix("169.254.") || ip == "0.0.0.0" {
+                continue
+            }
+
+            var score = 0
+            if name.hasPrefix("en") {
+                score += 500
+            }
+            if name == "en0" {
+                score += 200
+            }
+            if ip.hasPrefix("192.168.") {
+                score += 100
+            }
+            if ip.hasPrefix("10.") {
+                score += 80
+            }
+            if ip.hasPrefix("172.") {
+                let parts = ip.split(separator: ".")
+                if parts.count >= 2, let second = Int(parts[1]), (16...31).contains(second) {
+                    score += 60
+                }
+            }
+
+            scored.append((ip, score))
+        }
+
+        return scored.max(by: { $0.score < $1.score })?.ip
     }
 }
 
@@ -66,8 +231,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     override init() {
         let env = ProcessInfo.processInfo.environment
-        self.serverBaseURLString = env["IH_SERVER_BASE_URL"] ?? "http://127.0.0.1:3000"
-        self.projectRoot = env["IH_PROJECT_ROOT"] ?? FileManager.default.currentDirectoryPath
+        let root = env["IH_PROJECT_ROOT"] ?? FileManager.default.currentDirectoryPath
+        self.projectRoot = root
+        self.serverBaseURLString = ServerBaseURLResolver.resolvedString(projectRoot: root)
         self.viewerTokenOverride = env["VIEWER_TOKEN"]
         super.init()
     }
@@ -88,6 +254,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         fputs("Interview Helper: running as a menu bar app — look for “IH” near the clock (no Dock icon).\n", stderr)
+        fputs("Interview Helper: server base URL \(serverBaseURLString)\n", stderr)
         setupMenuBar()
         updateStatus("Idle")
         Task { @MainActor in
@@ -154,33 +321,182 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc private func onOpenViewer() {
-        guard let token = viewerToken, !token.isEmpty else {
-            showAlert(title: "Viewer token missing", message: "Could not resolve VIEWER_TOKEN from backend health.")
-            return
+        updateStatus("Opening viewer…")
+        Task { @MainActor in
+            await ensureBackendReady()
+            _ = await isBackendHealthy()
+            await openViewerIfPossible(showErrors: true)
         }
-        var components = URLComponents(url: serverBaseURL.appendingPathComponent("viewer"), resolvingAgainstBaseURL: false)
-        components?.queryItems = [URLQueryItem(name: "token", value: token)]
-        guard let viewerURL = components?.url else {
-            showAlert(title: "Viewer URL error", message: "Failed to build secure viewer URL.")
-            return
-        }
-        NSWorkspace.shared.open(viewerURL)
     }
 
     @objc private func onCopyViewerURL() {
+        updateStatus("Preparing link…")
+        Task { @MainActor in
+            await ensureBackendReady()
+            _ = await isBackendHealthy()
+            guard let urlString = await builtViewerURLString() else {
+                updateStatus("No viewer URL")
+                showAlert(
+                    title: "Cannot copy viewer URL",
+                    message:
+                        "Start the server at \(serverBaseURL.absoluteString) (or set VIEWER_TOKEN when launching this app). "
+                        + "If copied links should not use this host, set IH_SERVER_BASE_URL (and optionally IH_SERVER_PORT)."
+                )
+                return
+            }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(urlString, forType: .string)
+            scheduleStatusRevert(afterBrief: "Copied viewer URL")
+        }
+    }
+
+    /// Resolves token from health (or env override), then builds `/viewer?token=…` using `serverBaseURL`.
+    private func builtViewerURLString() async -> String? {
+        if let overrideToken = viewerTokenOverride, !overrideToken.isEmpty,
+           viewerToken == nil || viewerToken?.isEmpty == true {
+            viewerToken = overrideToken
+        }
         guard let token = viewerToken, !token.isEmpty else {
-            showAlert(title: "Viewer token missing", message: "Ensure the backend is running and reachable from this app.")
-            return
+            return nil
         }
         var components = URLComponents(url: serverBaseURL.appendingPathComponent("viewer"), resolvingAgainstBaseURL: false)
         components?.queryItems = [URLQueryItem(name: "token", value: token)]
-        guard let viewerURL = components?.url?.absoluteString else {
-            showAlert(title: "Copy failed", message: "Could not build viewer URL.")
+        return components?.url?.absoluteString
+    }
+
+    private func openViewerIfPossible(showErrors: Bool) async {
+        guard let urlString = await builtViewerURLString(), let viewerURL = URL(string: urlString) else {
+            if showErrors {
+                showAlert(
+                    title: "Viewer URL unavailable",
+                    message:
+                        "Could not build the viewer link. Ensure the backend is running and reachable at \(serverBaseURL.absoluteString)."
+                )
+            }
+            updateStatus("Idle")
             return
         }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(viewerURL, forType: .string)
-        scheduleStatusRevert(afterBrief: "Copied link")
+        NSWorkspace.shared.open(viewerURL)
+        scheduleStatusRevert(afterBrief: "Opened viewer")
+    }
+
+    @objc private func onOpenFirewallSettings() {
+        openFirewallAndPrivacySettings()
+    }
+
+    /// Registers the current `node` binary with Application Firewall and unblocks incoming (admin password).
+    @objc private func onAllowNodeThroughFirewall() {
+        let fwTool = "/usr/libexec/ApplicationFirewall/socketfilterfw"
+        guard FileManager.default.isExecutableFile(atPath: fwTool) else {
+            showAlert(
+                title: "Firewall tool not found",
+                message: "Expected \(fwTool). Open System Settings and allow Node manually under Firewall options."
+            )
+            return
+        }
+        guard let nodePath = resolvedNodeExecutablePath() else {
+            showAlert(
+                title: "Node not found",
+                message:
+                    "Could not find `node` in PATH for this app’s environment. Install Node, or launch Interview Helper from Terminal after `export PATH=…` (nvm/fnm), or set NODE_BINARY to the full path to node."
+            )
+            return
+        }
+
+        let confirm = NSAlert()
+        confirm.alertStyle = .informational
+        confirm.messageText = "Allow Node through the firewall?"
+        confirm.informativeText =
+            "macOS will ask for your administrator password to allow incoming connections for this program:\n\n\(nodePath)\n\n"
+            + "That lets iPhones and iPads on your Wi‑Fi open the copied viewer link. You usually only do this once per Node install path."
+        confirm.addButton(withTitle: "Continue")
+        confirm.addButton(withTitle: "Cancel")
+        guard confirm.runModal() == .alertFirstButtonReturn else {
+            return
+        }
+
+        let bash =
+            "\(fwTool.shellSingleQuoted) --add \(nodePath.shellSingleQuoted) && \(fwTool.shellSingleQuoted) --unblockapp \(nodePath.shellSingleQuoted)"
+        guard let b64 = bash.data(using: .utf8)?.base64EncodedString() else {
+            return
+        }
+        let appleScript =
+            "do shell script \"echo \(b64) | /usr/bin/base64 -D | /bin/bash\" with administrator privileges"
+
+        do {
+            try runAppleScript(appleScript)
+            scheduleStatusRevert(afterBrief: "Firewall: Node allowed")
+        } catch {
+            showAlert(title: "Firewall update failed", message: error.localizedDescription)
+        }
+    }
+
+    private func runAppleScript(_ source: String) throws {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        proc.arguments = ["-e", source]
+        let errPipe = Pipe()
+        proc.standardOutput = FileHandle.nullDevice
+        proc.standardError = errPipe
+        try proc.run()
+        proc.waitUntilExit()
+        guard proc.terminationStatus == 0 else {
+            let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+            let errText = String(decoding: errData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            throw NSError(
+                domain: "InterviewHelperMac",
+                code: Int(proc.terminationStatus),
+                userInfo: [NSLocalizedDescriptionKey: errText.isEmpty ? "AppleScript exited with status \(proc.terminationStatus)." : errText]
+            )
+        }
+    }
+
+    /// PATH used when the app spawns `npm start` (same idea for locating `node`).
+    private func resolvedNodeExecutablePath() -> String? {
+        let env = ProcessInfo.processInfo.environment
+        if let forced = env["NODE_BINARY"]?.trimmingCharacters(in: .whitespacesAndNewlines), !forced.isEmpty,
+           FileManager.default.isExecutableFile(atPath: forced) {
+            return forced
+        }
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/bin/bash")
+        proc.arguments = ["-lc", "command -v node"]
+        proc.currentDirectoryURL = URL(fileURLWithPath: projectRoot, isDirectory: true)
+        proc.environment = env
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = FileHandle.nullDevice
+        do {
+            try proc.run()
+            proc.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let s = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !s.isEmpty, FileManager.default.isExecutableFile(atPath: s) {
+                return s
+            }
+        } catch {
+            // fall through to common paths
+        }
+        for fallback in ["/opt/homebrew/bin/node", "/usr/local/bin/node"] {
+            if FileManager.default.isExecutableFile(atPath: fallback) {
+                return fallback
+            }
+        }
+        return nil
+    }
+
+    private func openFirewallAndPrivacySettings() {
+        let candidates = [
+            "x-apple.systempreferences:com.apple.preference.security?Firewall",
+            "x-apple.systempreferences:com.apple.settings.SecurityPrivacy?Firewall",
+        ]
+        for s in candidates {
+            if let u = URL(string: s), NSWorkspace.shared.open(u) {
+                return
+            }
+        }
+        let systemSettings = URL(fileURLWithPath: "/System/Applications/System Settings.app", isDirectory: true)
+        NSWorkspace.shared.open(systemSettings)
     }
 
     @objc private func onQuit() {
@@ -357,14 +673,38 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(capture)
         self.captureItem = capture
 
-        let openViewer = NSMenuItem(title: "Open Viewer in Browser", action: #selector(onOpenViewer), keyEquivalent: "")
+        let copyURL = NSMenuItem(
+            title: "Copy viewer URL to clipboard",
+            action: #selector(onCopyViewerURL),
+            keyEquivalent: "c"
+        )
+        copyURL.keyEquivalentModifierMask = [.command, .shift]
+        copyURL.target = self
+        copyURL.toolTip =
+            "Fetches the viewer token, builds /viewer?token=… using this Mac’s LAN IP when possible, and copies it (e.g. iPad Safari)."
+        menu.addItem(copyURL)
+
+        let openViewer = NSMenuItem(title: "Open viewer in this Mac’s browser", action: #selector(onOpenViewer), keyEquivalent: "")
         openViewer.target = self
         menu.addItem(openViewer)
 
-        let copyURL = NSMenuItem(title: "Copy Viewer Link", action: #selector(onCopyViewerURL), keyEquivalent: "c")
-        copyURL.keyEquivalentModifierMask = [.command, .shift]
-        copyURL.target = self
-        menu.addItem(copyURL)
+        let allowNodeFw = NSMenuItem(
+            title: "Allow Node for incoming connections (password)…",
+            action: #selector(onAllowNodeThroughFirewall),
+            keyEquivalent: ""
+        )
+        allowNodeFw.target = self
+        allowNodeFw.toolTip =
+            "Adds the Node binary to macOS Application Firewall and unblocks incoming connections (admin password). Use if iPad Safari cannot load the viewer."
+        menu.addItem(allowNodeFw)
+
+        let openFwSettings = NSMenuItem(
+            title: "Open Firewall & privacy settings",
+            action: #selector(onOpenFirewallSettings),
+            keyEquivalent: ""
+        )
+        openFwSettings.target = self
+        menu.addItem(openFwSettings)
 
         menu.addItem(NSMenuItem.separator())
 

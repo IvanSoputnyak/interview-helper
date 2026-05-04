@@ -99,6 +99,7 @@ app.get("/api/health", (_req, res) => {
     model: MODEL,
     viewerTokenConfigured: Boolean(process.env.VIEWER_TOKEN),
     viewerToken: isLocalRequest ? VIEWER_TOKEN : undefined,
+    port: Number(process.env.PORT) || DEFAULT_PORT,
   });
 });
 
@@ -377,6 +378,9 @@ if (require.main === module) {
     .then(({ port }) => {
       console.log(
         `Interview helper POC listening on http://localhost:${port}`,
+      );
+      console.log(
+        "If iPad/iPhone on the same Wi‑Fi cannot open the viewer URL: on the Mac use IH menu → “Allow Node for incoming connections (password)…” or System Settings → Network → Firewall and allow Node for incoming connections.",
       );
     })
     .catch((error) => {
