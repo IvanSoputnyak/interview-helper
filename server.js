@@ -376,11 +376,9 @@ if (require.main === module) {
   console.log(`Viewer token: ${VIEWER_TOKEN}`);
   startListening()
     .then(({ port }) => {
+      console.log(`Interview Helper listening on http://localhost:${port}`);
       console.log(
-        `Interview helper POC listening on http://localhost:${port}`,
-      );
-      console.log(
-        "If iPad/iPhone on the same Wi‑Fi cannot open the viewer URL: on the Mac use IH menu → “Allow Node for incoming connections (password)…” or System Settings → Network → Firewall and allow Node for incoming connections.",
+        "If another device cannot open the viewer URL: on this Mac allow Node through the firewall (IH menu → Allow Node for incoming connections…) or System Settings → Network → Firewall.",
       );
     })
     .catch((error) => {

@@ -35,15 +35,38 @@ private extension String {
 
 private enum TraySymbol {
     static func menuBarIcon() -> NSImage? {
-        let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
-        guard let img = NSImage(
-            systemSymbolName: "doc.text.viewfinder",
-            accessibilityDescription: "Interview Helper — capture coding question screen"
-        )?.withSymbolConfiguration(config) else {
-            return nil
-        }
-        img.isTemplate = true
-        return img
+        let size = NSSize(width: 24, height: 18)
+        let image = NSImage(size: size)
+        image.lockFocus()
+
+        NSColor.black.setStroke()
+
+        let lineWidth: CGFloat = 1.8
+        let bubble = NSBezierPath(roundedRect: NSRect(x: 2.5, y: 5.5, width: 19, height: 10), xRadius: 3, yRadius: 3)
+        bubble.lineWidth = lineWidth
+        bubble.stroke()
+
+        let tail = NSBezierPath()
+        tail.lineWidth = lineWidth
+        tail.lineJoinStyle = .round
+        tail.lineCapStyle = .round
+        tail.move(to: NSPoint(x: 10, y: 5.7))
+        tail.line(to: NSPoint(x: 11.7, y: 2.4))
+        tail.line(to: NSPoint(x: 15.2, y: 5.7))
+        tail.stroke()
+
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedSystemFont(ofSize: 8.7, weight: .bold),
+            .foregroundColor: NSColor.black
+        ]
+        let mark = NSAttributedString(string: "IH", attributes: attrs)
+        let textSize = mark.size()
+        mark.draw(at: NSPoint(x: (size.width - textSize.width) / 2, y: 6.3))
+
+        image.unlockFocus()
+        image.isTemplate = true
+        image.accessibilityDescription = "Interview Helper — capture coding question screen"
+        return image
     }
 }
 
@@ -253,7 +276,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        fputs("Interview Helper: running as a menu bar app — look for “IH” near the clock (no Dock icon).\n", stderr)
+        fputs("Interview Helper: menu bar app (no Dock) — look for the Interview Helper icon near the clock.\n", stderr)
         fputs("Interview Helper: server base URL \(serverBaseURLString)\n", stderr)
         setupMenuBar()
         updateStatus("Idle")
@@ -290,8 +313,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
             showPermissionAlert(
                 title: "Screen Recording Permission Required",
                 message:
-                    "Enable Screen Recording for InterviewHelperMac in System Settings > Privacy & Security > Screen Recording, then capture again.\n\n"
-                    + "If that list shows Cursor or Terminal instead of InterviewHelperMac, you started a plain swift run from an IDE terminal. Quit it, launch dist/InterviewHelperMac.app (for example run “make mac-app-debug” in the repo), then enable Screen Recording for InterviewHelperMac only."
+                    "Turn on Screen Recording for Interview Helper (InterviewHelperMac) in System Settings → Privacy & Security → Screen Recording, then capture again.\n\n"
+                    + "If Settings lists Cursor or Terminal instead, quit that run and open dist/InterviewHelperMac.app (e.g. run make mac-app-debug), then enable Screen Recording for InterviewHelperMac."
             )
             return
         }
@@ -650,12 +673,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         item.button?.toolTip =
             "Interview Helper — ⌥⇧S capture • menu for viewer & prompts"
-        // Always show “IH” text so the app is easy to spot (icon-only is easy to miss).
-        item.button?.title = "IH"
-        item.button?.font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
+        item.button?.title = ""
         if let trayImage = TraySymbol.menuBarIcon() {
             item.button?.image = trayImage
-            item.button?.imagePosition = .imageLeading
+            item.button?.imagePosition = .imageOnly
         } else {
             item.button?.image = nil
             item.button?.imagePosition = .noImage
@@ -713,6 +734,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
             action: #selector(togglePromptUnlock),
             keyEquivalent: ""
         )
+        unlockPromptItem.toolTip =
+            "When off, a built‑in prompt is used. Turn on to edit your own wording."
         unlockPromptItem.target = self
         unlockPromptItem.state = UserDefaults.standard.bool(forKey: UDKeys.promptUnlockEnabled) ? .on : .off
         promptUnlockMenuItem = unlockPromptItem
@@ -723,12 +746,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         editPromptItem.isEnabled = UserDefaults.standard.bool(forKey: UDKeys.promptUnlockEnabled)
         editPromptMenuItem = editPromptItem
         menu.addItem(editPromptItem)
-
-        menu.addItem(NSMenuItem.separator())
-
-        let hint = NSMenuItem(title: "Default prompt is bundled; toggle above only if you edit.", action: nil, keyEquivalent: "")
-        hint.isEnabled = false
-        menu.addItem(hint)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -992,9 +1009,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         alert.alertStyle = .informational
         alert.messageText = "Interview Helper is running"
         alert.informativeText =
-            "This app lives in the menu bar at the top of the screen, not in the Dock.\n\n"
-            + "Look for “IH” (and a small document icon) near the Wi‑Fi, battery, and clock.\n\n"
-            + "Click it for the menu, or press ⌥⇧S (Option+Shift+S) to capture."
+            "Interview Helper stays in the menu bar (top of the screen), not in the Dock.\n\n"
+            + "Look for its icon near system status icons.\n\n"
+            + "Click for the menu or press ⌥⇧S (Option+Shift+S) to capture."
         alert.addButton(withTitle: "OK")
         alert.runModal()
     }

@@ -1,7 +1,7 @@
 {
   "name": "interview-helper",
   "version": "1.0.0",
-  "description": "POC for screen capture + AI analysis + cross-device viewing",
+  "description": "Native macOS capture + AI analysis + secure mobile viewer",
   "main": "server.js",
   "scripts": {
     "dev": "nodemon server.js",
