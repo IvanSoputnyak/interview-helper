@@ -1,26 +1,38 @@
 # Interview Helper (Native macOS)
 
-Native macOS menu-bar capture app + Node backend + secure mobile viewer.
+Standalone Mac App Store–ready menu bar app: capture a coding question, analyze with **your** OpenAI API key, view results on this Mac. Optional Node backend in the repo for LAN viewer experiments only.
 
 ## Features
 
 - Native macOS tray app (Swift/AppKit), no Electron.
 - Global hotkey: `Option + Shift + S`.
-- Auto-start backend from native app (`npm start`) when backend is not running.
-- One-click shortcut to open Screen Recording settings when permission is missing.
-- Token-protected viewer (`/viewer?token=...`) and socket auth.
-- In-memory analysis history (`/api/history`) with configurable retention.
-- **Analysis prompt**: built-in default text is used for captures. In the menu bar menu, enable **Customize prompt (advanced)**, then **Edit custom prompt…** to persist your own wording (stored on this Mac).
+- Direct OpenAI vision API (no developer-hosted backend).
+- API key stored in Keychain; minimal Q&A history on disk (`q` / `a` only).
+- **Analysis prompt**: built-in default; optional custom prompt via menu.
+- **Mac App Store**: see [APP_STORE.md](APP_STORE.md).
+
+### Optional dev backend (not required for the app)
+
+- Node server + token-protected viewer for phone/tablet on the same Wi‑Fi (`npm start`).
 
 ## Quick start (Makefile)
 
 From the repo root:
 
 ```bash
-make env          # creates .env from .env.example if missing
-make install      # npm install
+make mac-app-debug   # recommended: real .app bundle + Screen Recording identity
+open dist/InterviewHelperMac.app
+# First launch: Settings → paste OpenAI API key → ⌥⇧S to capture
+```
+
+Or run from source: `make mac-native` (Swift only, no Node).
+
+Optional backend + viewer:
+
+```bash
+make env && make install
 # Edit .env: OPENAI_API_KEY, VIEWER_TOKEN
-make mac-native   # tray app (starts backend if needed)
+make start
 ```
 
 Other useful targets: `make all` (env + install + Swift build), `make test`, `make start`, `make dev`, `make package-mac`, `make clean`.  
@@ -66,7 +78,7 @@ Interview Helper is a **menu bar app** (like Wi‑Fi or Spotlight): it does **no
 | `make mac-native` | `npm run mac:native` |
 | `make start` | `npm start` |
 | `make dev` | `npm run dev` |
-| `make test` | `npm test` |
+| `make test` | `npm test` (Node API + Swift unit tests) |
 | `make package-mac` | `npm run package:mac` |
 
 ## Packaging, signing, notarization

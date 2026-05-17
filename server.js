@@ -6,6 +6,8 @@ const multer = require("multer");
 const { createServer } = require("http");
 const { Server } = require("socket.io");
 const OpenAI = require("openai");
+const qaStore = require("./lib/qa-store");
+const { ANALYSIS_JSON_KEYS, analysisJsonSchema } = require("./lib/analysis-schema");
 
 const app = express();
 const httpServer = createServer(app);
@@ -31,6 +33,7 @@ let latestAnalysis = {
   id: null,
   createdAt: null,
   summary: "No analysis yet.",
+  question: "",
   solution: "",
   codeSnippet: "",
   explanation: "",
@@ -62,6 +65,7 @@ function pushHistory(entry) {
 function normalizeAnalysisShape(parsed) {
   return {
     summary: parsed.summary || "No summary",
+    question: parsed.question || parsed.summary || "",
     solution: parsed.solution || "",
     codeSnippet: parsed.codeSnippet || "",
     explanation: parsed.explanation || "",
@@ -71,6 +75,29 @@ function normalizeAnalysisShape(parsed) {
     detectedContentType: parsed.detectedContentType || "unknown",
     raw: parsed,
   };
+}
+
+function toQA(analysis) {
+  return {
+    id: analysis.id,
+    at: analysis.createdAt,
+    q: (analysis.question || analysis.summary || "").slice(0, 4000),
+    a: (analysis.codeSnippet || analysis.solution || "").slice(0, 12000),
+  };
+}
+
+function commitAnalysis(analysis, { replaceQA = false } = {}) {
+  latestAnalysis = analysis;
+  pushHistory(analysis);
+  const row = toQA(analysis);
+  if (replaceQA) {
+    qaStore.upsert(row);
+  } else {
+    qaStore.append(row);
+  }
+  io.emit("analysis:update", latestAnalysis);
+  io.emit("analysis:history", analysisHistory);
+  io.emit("qa:list", qaStore.list());
 }
 
 app.use(express.json({ limit: "1mb" }));
@@ -87,6 +114,7 @@ io.use((socket, next) => {
 io.on("connection", (socket) => {
   socket.emit("analysis:update", latestAnalysis);
   socket.emit("analysis:history", analysisHistory);
+  socket.emit("qa:list", qaStore.list());
 });
 
 app.get("/api/health", (_req, res) => {
@@ -111,6 +139,10 @@ app.get("/api/history", requireViewerToken, (_req, res) => {
   res.json({ items: analysisHistory });
 });
 
+app.get("/api/qa", requireViewerToken, (_req, res) => {
+  res.json({ items: qaStore.list() });
+});
+
 app.post("/api/analyze", upload.single("screenshot"), async (req, res) => {
   try {
     if (!req.file) {
@@ -122,10 +154,11 @@ app.post("/api/analyze", upload.single("screenshot"), async (req, res) => {
       "Analyze this screenshot and return a short summary plus actionable help.";
 
     if (!openai) {
-      latestAnalysis = {
+      commitAnalysis({
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString(),
         summary: "OPENAI_API_KEY is missing.",
+        question: "Screenshot capture",
         solution:
           "Add OPENAI_API_KEY to your .env and restart. Then run a new analysis.",
         codeSnippet: "",
@@ -138,10 +171,7 @@ app.post("/api/analyze", upload.single("screenshot"), async (req, res) => {
           fallback: true,
           reason: "No OpenAI client configured.",
         },
-      };
-      pushHistory(latestAnalysis);
-      io.emit("analysis:update", latestAnalysis);
-      io.emit("analysis:history", analysisHistory);
+      });
       return res.json(latestAnalysis);
     }
 
@@ -165,7 +195,7 @@ app.post("/api/analyze", upload.single("screenshot"), async (req, res) => {
             {
               type: "input_text",
               text:
-                "Prefer an efficient solution (not brute force, but not over-engineered). Return strict JSON with keys: summary, solution, codeSnippet, explanation, algorithmWhy, timeComplexity, spaceComplexity, detectedContentType. Keep words minimal and simple.",
+                `Prefer an efficient solution (not brute force, but not over-engineered). Return strict JSON with keys: ${ANALYSIS_JSON_KEYS}. Put the problem statement in question. Keep words minimal and simple.`,
             },
           ],
         },
@@ -174,30 +204,7 @@ app.post("/api/analyze", upload.single("screenshot"), async (req, res) => {
         format: {
           type: "json_schema",
           name: "screen_analysis",
-          schema: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              summary: { type: "string" },
-              solution: { type: "string" },
-              codeSnippet: { type: "string" },
-              explanation: { type: "string" },
-              algorithmWhy: { type: "string" },
-              timeComplexity: { type: "string" },
-              spaceComplexity: { type: "string" },
-              detectedContentType: { type: "string" },
-            },
-            required: [
-              "summary",
-              "solution",
-              "codeSnippet",
-              "explanation",
-              "algorithmWhy",
-              "timeComplexity",
-              "spaceComplexity",
-              "detectedContentType",
-            ],
-          },
+          schema: analysisJsonSchema,
           strict: true,
         },
       },
@@ -209,6 +216,7 @@ app.post("/api/analyze", upload.single("screenshot"), async (req, res) => {
     } catch (_error) {
       parsed = {
         summary: completion.output_text || "Could not parse model output.",
+        question: "",
         solution: "",
         codeSnippet: "",
         explanation: "",
@@ -219,15 +227,11 @@ app.post("/api/analyze", upload.single("screenshot"), async (req, res) => {
       };
     }
 
-    latestAnalysis = {
+    commitAnalysis({
       id: crypto.randomUUID(),
       createdAt: new Date().toISOString(),
       ...normalizeAnalysisShape(parsed),
-    };
-
-    pushHistory(latestAnalysis);
-    io.emit("analysis:update", latestAnalysis);
-    io.emit("analysis:history", analysisHistory);
+    });
     return res.json(latestAnalysis);
   } catch (error) {
     return res.status(500).json({
@@ -251,8 +255,9 @@ app.post("/api/improve", requireViewerToken, async (_req, res) => {
       "Target FAANG expectations.",
       "Avoid brute force unless it is optimal.",
       "Use few words and simple words.",
-      "Return strict JSON keys: summary, solution, codeSnippet, explanation, algorithmWhy, timeComplexity, spaceComplexity, detectedContentType.",
+      `Return strict JSON keys: ${ANALYSIS_JSON_KEYS}.`,
       "",
+      `Current question: ${latestAnalysis.question || latestAnalysis.summary}`,
       `Current summary: ${latestAnalysis.summary}`,
       `Current solution: ${latestAnalysis.solution}`,
       `Current code: ${latestAnalysis.codeSnippet}`,
@@ -279,30 +284,7 @@ app.post("/api/improve", requireViewerToken, async (_req, res) => {
         format: {
           type: "json_schema",
           name: "screen_analysis_improved",
-          schema: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              summary: { type: "string" },
-              solution: { type: "string" },
-              codeSnippet: { type: "string" },
-              explanation: { type: "string" },
-              algorithmWhy: { type: "string" },
-              timeComplexity: { type: "string" },
-              spaceComplexity: { type: "string" },
-              detectedContentType: { type: "string" },
-            },
-            required: [
-              "summary",
-              "solution",
-              "codeSnippet",
-              "explanation",
-              "algorithmWhy",
-              "timeComplexity",
-              "spaceComplexity",
-              "detectedContentType",
-            ],
-          },
+          schema: analysisJsonSchema,
           strict: true,
         },
       },
@@ -314,6 +296,7 @@ app.post("/api/improve", requireViewerToken, async (_req, res) => {
     } catch (_error) {
       parsed = {
         summary: completion.output_text || "Could not parse improved output.",
+        question: latestAnalysis.question || latestAnalysis.summary || "",
         solution: latestAnalysis.solution || "",
         codeSnippet: latestAnalysis.codeSnippet || "",
         explanation: latestAnalysis.explanation || "",
@@ -324,14 +307,16 @@ app.post("/api/improve", requireViewerToken, async (_req, res) => {
       };
     }
 
-    latestAnalysis = {
-      id: crypto.randomUUID(),
-      createdAt: new Date().toISOString(),
-      ...normalizeAnalysisShape(parsed),
-    };
-    pushHistory(latestAnalysis);
-    io.emit("analysis:update", latestAnalysis);
-    io.emit("analysis:history", analysisHistory);
+    const improved = normalizeAnalysisShape(parsed);
+    commitAnalysis(
+      {
+        id: latestAnalysis.id,
+        createdAt: new Date().toISOString(),
+        ...improved,
+        question: latestAnalysis.question || improved.question,
+      },
+      { replaceQA: true },
+    );
     return res.json(latestAnalysis);
   } catch (error) {
     return res.status(500).json({
@@ -370,6 +355,8 @@ module.exports = {
   httpServer,
   io,
   startListening,
+  toQA,
+  qaStore,
 };
 
 if (require.main === module) {

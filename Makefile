@@ -21,7 +21,7 @@ help:
 	@echo "  make all           env + install + swift-build"
 	@echo "  make install       Install Node dependencies (npm install)"
 	@echo "  make env           Copy .env.example to .env if .env is missing"
-	@echo "  make test          Run Node API tests"
+	@echo "  make test          Run Node API + Swift unit tests"
 	@echo "  make start         Run backend server (foreground)"
 	@echo "  make dev           Run backend with nodemon reload"
 	@echo "  make mac-native    swift run (fast; Screen Recording may attach to Cursor/Terminal — avoid if you want app-only permission)"
@@ -42,7 +42,8 @@ env:
 	@echo ".env ready (edit OPENAI_API_KEY and VIEWER_TOKEN)"
 
 test:
-	$(NPM) test
+	$(NPM) run test:node
+	$(SWIFT) test --package-path $(SWIFT_PKG)
 
 start:
 	$(NPM) start
