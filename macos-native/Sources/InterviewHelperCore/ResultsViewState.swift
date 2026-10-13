@@ -7,6 +7,20 @@ public struct ResultsViewState: Equatable, Sendable {
     public enum PendingAction: Equatable, Sendable {
         case improve
         case explain
+
+        var busyTitle: String {
+            switch self {
+            case .improve: return "Improving…"
+            case .explain: return "Explaining…"
+            }
+        }
+
+        public var failureTitle: String {
+            switch self {
+            case .improve: return "Improve failed"
+            case .explain: return "Explain failed"
+            }
+        }
     }
 
     public private(set) var analysis: ScreenAnalysis?
@@ -94,7 +108,7 @@ public struct ResultsViewState: Equatable, Sendable {
 
     public var explainButtonTitle: String {
         if pendingAction == .explain {
-            return retryText ?? "Explaining…"
+            return retryText ?? PendingAction.explain.busyTitle
         }
         guard explanation != nil else {
             return "Explain simply"
@@ -103,7 +117,7 @@ public struct ResultsViewState: Equatable, Sendable {
     }
 
     public var improveButtonTitle: String {
-        pendingAction == .improve ? (retryText ?? "Improving…") : "Improve"
+        pendingAction == .improve ? (retryText ?? PendingAction.improve.busyTitle) : "Improve"
     }
 
     /// Window text for the analysis, or `nil` when there is none or history is showing.

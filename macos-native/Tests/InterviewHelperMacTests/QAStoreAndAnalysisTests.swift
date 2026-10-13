@@ -105,6 +105,10 @@ struct ScreenAnalysisTests {
         #expect(row.a.count == QARecord.answerMaxChars)
     }
 
+    @Test func test_fromParsedJSON_whenQuestionEmpty_fallsBackToSummary() {
+        #expect(ScreenAnalysis.fromParsedJSON(["summary": "S", "question": ""]).question == "S")
+    }
+
     @Test func test_fromParsedJSON_whenKeysMissing_fillsDefaults() {
         let analysis = ScreenAnalysis.fromParsedJSON(["summary": "S"], id: "fixed")
         #expect(analysis.id == "fixed")

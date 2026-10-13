@@ -111,6 +111,14 @@ struct RetryPolicyClassificationTests {
         #expect(RetryPolicy.isTimeout(URLError(.timedOut)))
     }
 
+    @Test func test_isTimeout_whenGatewayTimeout504_returnsTrue() {
+        #expect(RetryPolicy.isTimeout(AnalyzerError.httpStatus(504, "")))
+    }
+
+    @Test func test_isTimeout_whenServiceUnavailable503_returnsFalse() {
+        #expect(!RetryPolicy.isTimeout(AnalyzerError.httpStatus(503, "")))
+    }
+
     @Test func test_isTimeout_whenConnectionLost_returnsFalse() {
         #expect(!RetryPolicy.isTimeout(URLError(.networkConnectionLost)))
     }
@@ -181,6 +189,12 @@ struct WithRetryTests {
 
     @Test func test_withRetry_whenRepeatedTimeouts_retriesTimeoutOnlyOnce() async {
         let operation = ScriptedOperation(failures: Array(repeating: URLError(.timedOut), count: 10))
+        _ = try? await runWithRetry(operation)
+        #expect(operation.attempts == RetryPolicy.standard.maxTimeoutRetries + 1)
+    }
+
+    @Test func test_withRetry_whenClientAndGatewayTimeoutsMix_sharesOneTimeoutRetry() async {
+        let operation = ScriptedOperation(failures: [AnalyzerError.httpStatus(504, ""), URLError(.timedOut), URLError(.timedOut)])
         _ = try? await runWithRetry(operation)
         #expect(operation.attempts == RetryPolicy.standard.maxTimeoutRetries + 1)
     }

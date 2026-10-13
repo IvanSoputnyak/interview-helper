@@ -10,7 +10,10 @@ const path = require("path");
 const contract = require("../shared/analysis-contract.json");
 
 const AUTH = { "x-viewer-token": "test-token" };
-const fakeReplies = [];
+const ANALYZE = "screen_analysis";
+const IMPROVE = "screen_analysis_improved";
+/** Queued fake replies per request kind (text.format.name), so concurrent requests can't take each other's reply. */
+const fakeReplies = { [ANALYZE]: [], [IMPROVE]: [] };
 const fakeRequests = [];
 let fakeOpenAI;
 let baseUrl = "";
@@ -31,9 +34,9 @@ function analysisJSON(fields) {
   });
 }
 
-/** Queue the next fake model reply: output text, optional delay, optional HTTP status. */
-function replyWith(text, { delayMs = 0, status = 200 } = {}) {
-  fakeReplies.push({ text, delayMs, status });
+/** Queue the next fake model reply for one request kind: output text, optional delay, optional HTTP status. */
+function replyWith(kind, text, { delayMs = 0, status = 200 } = {}) {
+  fakeReplies[kind].push({ text, delayMs, status });
 }
 
 function responsesBody(text) {
@@ -60,8 +63,10 @@ function startFakeOpenAI() {
       raw += chunk;
     });
     req.on("end", () => {
-      fakeRequests.push(JSON.parse(raw));
-      const reply = fakeReplies.shift() || { text: analysisJSON({ summary: "default" }), delayMs: 0, status: 200 };
+      const request = JSON.parse(raw);
+      fakeRequests.push(request);
+      const queue = fakeReplies[request.text.format.name];
+      const reply = queue.shift() || { text: analysisJSON({ summary: "unscripted reply" }), delayMs: 0, status: 200 };
       setTimeout(() => {
         res.writeHead(reply.status, { "content-type": "application/json" });
         const body = reply.status === 200 ? responsesBody(reply.text) : { error: { message: reply.text } };
@@ -104,6 +109,11 @@ test.before(async () => {
   baseUrl = `http://127.0.0.1:${port}`;
 });
 
+test.beforeEach(() => {
+  fakeReplies[ANALYZE].length = 0;
+  fakeReplies[IMPROVE].length = 0;
+});
+
 test.after(async () => {
   await new Promise((resolve) => server.httpServer.close(resolve));
   await new Promise((resolve) => fakeOpenAI.close(resolve));
@@ -111,86 +121,95 @@ test.after(async () => {
 });
 
 test("analyze sends the contract default model when OPENAI_MODEL is a retired default", async () => {
-  replyWith(analysisJSON({ summary: "s", question: "Two sum" }));
+  replyWith(ANALYZE, analysisJSON({ summary: "s", question: "Two sum" }));
   await analyze();
   assert.equal(fakeRequests.at(-1).model, contract.defaultModel);
 });
 
 test("analyze sends the contract system prompt", async () => {
-  replyWith(analysisJSON({ summary: "s", question: "Two sum" }));
+  replyWith(ANALYZE, analysisJSON({ summary: "s", question: "Two sum" }));
   await analyze();
   assert.equal(fakeRequests.at(-1).input[0].content, contract.systemPrompt);
 });
 
 test("analyze requests the strict schema with field descriptions", async () => {
-  replyWith(analysisJSON({ summary: "s", question: "Two sum" }));
+  replyWith(ANALYZE, analysisJSON({ summary: "s", question: "Two sum" }));
   await analyze();
   const schema = fakeRequests.at(-1).text.format.schema;
   assert.equal(schema.properties.codeSnippet.description, contract.fields.find((f) => f.key === "codeSnippet").description);
 });
 
 test("analyze strips markdown fences from the returned code", async () => {
-  replyWith(analysisJSON({ question: "Two sum", codeSnippet: "```java\nreturn new int[0];\n```" }));
+  replyWith(ANALYZE, analysisJSON({ question: "Two sum", codeSnippet: "```java\nreturn new int[0];\n```" }));
   const { body } = await analyze();
   assert.equal(body.codeSnippet, "return new int[0];");
 });
 
 test("analyze surfaces an OpenAI error as JSON 500", async () => {
-  replyWith("Invalid schema", { status: 400 });
+  replyWith(ANALYZE, "Invalid schema", { status: 400 });
   const { status, body } = await analyze();
   assert.equal(status, 500);
   assert.equal(body.error, "Failed to analyze screenshot.");
 });
 
 test("improve sends the improve prompt built from the current analysis", async () => {
-  replyWith(analysisJSON({ question: "Two sum", codeSnippet: "v1" }));
+  replyWith(ANALYZE, analysisJSON({ question: "Two sum", codeSnippet: "v1" }));
   await analyze();
-  replyWith(analysisJSON({ question: "Two sum", codeSnippet: "v2" }));
+  replyWith(IMPROVE, analysisJSON({ question: "Two sum", codeSnippet: "v2" }));
   await improve();
   assert.match(fakeRequests.at(-1).input[1].content[0].text, /^Current codeSnippet: v1$/m);
 });
 
 test("improve uses the model's question when it provides one", async () => {
-  replyWith(analysisJSON({ question: "Two sum" }));
+  replyWith(ANALYZE, analysisJSON({ question: "Two sum" }));
   await analyze();
-  replyWith(analysisJSON({ question: "Two sum (indices, exactly one answer)" }));
+  replyWith(IMPROVE, analysisJSON({ question: "Two sum (indices, exactly one answer)" }));
   const { body } = await improve();
   assert.equal(body.question, "Two sum (indices, exactly one answer)");
 });
 
 test("improve keeps the original question when the model leaves it empty", async () => {
-  replyWith(analysisJSON({ question: "Two sum" }));
+  replyWith(ANALYZE, analysisJSON({ question: "Two sum" }));
   await analyze();
-  replyWith(analysisJSON({ summary: "better", question: "" }));
+  replyWith(IMPROVE, analysisJSON({ summary: "better", question: "" }));
   const { body } = await improve();
   assert.equal(body.question, "Two sum");
 });
 
-test("improve keeps the previous code when the model output is not JSON", async () => {
-  replyWith(analysisJSON({ question: "Two sum", codeSnippet: "keep me" }));
+test("improve falls back to the summary when both questions are empty", async () => {
+  // Analyze already fills an empty question from the summary, so both are empty only when the summary is too.
+  replyWith(ANALYZE, analysisJSON({ summary: "", question: "" }));
   await analyze();
-  replyWith("not json at all");
+  replyWith(IMPROVE, analysisJSON({ summary: "better", question: "" }));
+  const { body } = await improve();
+  assert.equal(body.question, "better");
+});
+
+test("improve keeps the previous code when the model output is not JSON", async () => {
+  replyWith(ANALYZE, analysisJSON({ question: "Two sum", codeSnippet: "keep me" }));
+  await analyze();
+  replyWith(IMPROVE, "not json at all");
   const { body } = await improve();
   assert.equal(body.codeSnippet, "keep me");
 });
 
 test("improve fallback does not nest the previous raw payload", async () => {
-  replyWith(analysisJSON({ question: "Two sum" }));
+  replyWith(ANALYZE, analysisJSON({ question: "Two sum" }));
   await analyze();
-  replyWith("not json");
+  replyWith(IMPROVE, "not json");
   await improve();
-  replyWith("still not json");
+  replyWith(IMPROVE, "still not json");
   const { body } = await improve();
   assert.equal(body.raw.raw, undefined);
 });
 
 test("improve finishing after a newer analyze does not replace the live analysis", async () => {
-  replyWith(analysisJSON({ question: "Old problem" }));
+  replyWith(ANALYZE, analysisJSON({ question: "Old problem" }));
   const old = (await analyze()).body;
-  replyWith(analysisJSON({ question: "Old problem", codeSnippet: "improved" }), { delayMs: 300 });
+  replyWith(IMPROVE, analysisJSON({ question: "Old problem", codeSnippet: "improved" }), { delayMs: 300 });
   const pendingImprove = improve();
   await new Promise((resolve) => setTimeout(resolve, 50));
-  replyWith(analysisJSON({ question: "New problem" }));
+  replyWith(ANALYZE, analysisJSON({ question: "New problem" }));
   const newer = (await analyze()).body;
   const improved = (await pendingImprove).body;
 
@@ -199,12 +218,12 @@ test("improve finishing after a newer analyze does not replace the live analysis
 });
 
 test("improve finishing after a newer analyze still updates the old question's saved answer", async () => {
-  replyWith(analysisJSON({ question: "Old problem 2" }));
+  replyWith(ANALYZE, analysisJSON({ question: "Old problem 2" }));
   const old = (await analyze()).body;
-  replyWith(analysisJSON({ question: "Old problem 2", codeSnippet: "improved later" }), { delayMs: 300 });
+  replyWith(IMPROVE, analysisJSON({ question: "Old problem 2", codeSnippet: "improved later" }), { delayMs: 300 });
   const pendingImprove = improve();
   await new Promise((resolve) => setTimeout(resolve, 50));
-  replyWith(analysisJSON({ question: "New problem 2" }));
+  replyWith(ANALYZE, analysisJSON({ question: "New problem 2" }));
   await analyze();
   await pendingImprove;
 

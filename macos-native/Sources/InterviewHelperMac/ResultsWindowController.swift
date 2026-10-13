@@ -136,7 +136,7 @@ final class ResultsWindowController: NSWindowController, NSWindowDelegate {
                     self?.updateButtons()
                 }
             } catch {
-                NSAlert.show(title: action == .improve ? "Improve failed" : "Explain failed", message: error.localizedDescription)
+                NSAlert.show(title: action.failureTitle, message: error.localizedDescription)
             }
         }
     }

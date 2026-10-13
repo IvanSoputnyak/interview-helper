@@ -75,6 +75,14 @@ struct ResultsViewStateRequestTests {
         #expect(state.explainButtonTitle == "Explaining…")
     }
 
+    @Test func test_failureTitle_forImprove_namesImprove() {
+        #expect(ResultsViewState.PendingAction.improve.failureTitle == "Improve failed")
+    }
+
+    @Test func test_failureTitle_forExplain_namesExplain() {
+        #expect(ResultsViewState.PendingAction.explain.failureTitle == "Explain failed")
+    }
+
     @Test func test_isCurrent_whenSameAnalysisStillShown_isTrue() {
         #expect(stateShowing().isCurrent(twoSum))
     }

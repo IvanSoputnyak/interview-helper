@@ -61,10 +61,11 @@ async function improveSolution() {
       throw new Error(payload.error || "Improve failed.");
     }
     // A newer capture may have replaced the one being improved; the server pushes the live view over the socket.
-    if (payload.id === shownAnalysisId) {
+    const stillShown = payload.id === shownAnalysisId;
+    if (stillShown) {
       renderAnalysis(payload);
     }
-    improveStatusEl.textContent = "Improved.";
+    improveStatusEl.textContent = stillShown ? "Improved." : "Improved (a newer capture is shown).";
   } catch (error) {
     improveStatusEl.textContent = `Error: ${error.message}`;
   } finally {

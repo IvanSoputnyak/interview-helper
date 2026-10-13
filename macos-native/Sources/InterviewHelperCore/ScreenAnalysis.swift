@@ -44,7 +44,7 @@ public struct ScreenAnalysis: Codable, Sendable, Equatable {
             id: id ?? UUID().uuidString,
             createdAt: ISO8601DateFormatter().string(from: Date()),
             summary: parsed["summary"] ?? "No summary",
-            question: parsed["question"] ?? parsed["summary"] ?? "",
+            question: nonEmpty(parsed["question"]) ?? parsed["summary"] ?? "",
             solution: parsed["solution"] ?? "",
             codeSnippet: CodeFence.strip(parsed["codeSnippet"] ?? ""),
             explanation: parsed["explanation"] ?? "",
@@ -53,6 +53,11 @@ public struct ScreenAnalysis: Codable, Sendable, Equatable {
             spaceComplexity: parsed["spaceComplexity"] ?? "",
             detectedContentType: parsed["detectedContentType"] ?? "unknown"
         )
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let value, !value.isEmpty else { return nil }
+        return value
     }
 
     /// Field value by schema key; `question` falls back to `summary` like `QARecord.from`.

@@ -39,6 +39,7 @@ struct RetryPolicy: Sendable {
         .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed,
     ]
     private static let transientHTTPStatuses: Set<Int> = [408, 429, 500, 502, 503, 504]
+    private static let gatewayTimeoutStatus = 504
     /// OpenAI answers 429 both for rate limits (transient) and for an empty balance (permanent).
     private static let quotaExhaustedMarker = "insufficient_quota"
 
@@ -58,8 +59,15 @@ struct RetryPolicy: Sendable {
         return transientHTTPStatuses.contains(code) && !body.contains(quotaExhaustedMarker)
     }
 
+    /// Failures that arrive only after a long wait: a client timeout or an upstream gateway timeout.
     static func isTimeout(_ error: Error) -> Bool {
-        (error as? URLError)?.code == .timedOut
+        if let urlError = error as? URLError {
+            return urlError.code == .timedOut
+        }
+        guard case let OpenAIAnalyzer.AnalyzerError.httpStatus(code, _) = error else {
+            return false
+        }
+        return code == gatewayTimeoutStatus
     }
 
     static func isOffline(_ error: Error) -> Bool {

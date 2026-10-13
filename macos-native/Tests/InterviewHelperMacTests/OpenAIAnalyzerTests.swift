@@ -108,6 +108,12 @@ struct OpenAIAnalyzerHelperTests {
         #expect(improved.summary == "better")
     }
 
+    @Test func test_improvedAnalysis_whenModelAndOriginalQuestionEmpty_fallsBackToSummary() {
+        let current = ScreenAnalysis(id: "orig", question: "")
+        let improved = OpenAIAnalyzer.improvedAnalysis(from: ["summary": "better", "question": ""], current: current)
+        #expect(improved.question == "better")
+    }
+
     @Test func test_improvedAnalysis_whenModelProvidesQuestion_usesIt() {
         let current = ScreenAnalysis(id: "orig", question: "Two sum")
         let improved = OpenAIAnalyzer.improvedAnalysis(from: ["question": "Two sum (sorted)"], current: current)
