@@ -1,6 +1,6 @@
 # Mac App Store release (standalone app, no backend)
 
-Interview Helper is now a **standalone menu bar app**: OpenAI calls run on-device, API key in Keychain, Q&A saved under `~/Library/Application Support/InterviewHelper/qa.jsonl`. No Node server required.
+Interview Helper is now a **standalone menu bar app**: OpenAI calls run on-device, API key in Keychain, Q&A saved under `~/Library/Application Support/InterviewHelper/qa.jsonl`. No Node server required. Minimum macOS 14 (ScreenCaptureKit screenshots).
 
 ## Before you submit
 
@@ -22,7 +22,7 @@ make package-mac          # release .app in dist/
 Sign for distribution (replace with your Apple Distribution identity):
 
 ```bash
-codesign --deep --force --options runtime \
+codesign --force --options runtime \
   --entitlements macos-native/InterviewHelperMac.entitlements \
   --sign "Apple Distribution: Your Name (TEAMID)" \
   dist/InterviewHelperMac.app
@@ -36,11 +36,15 @@ Create a Mac App Store `.pkg` in Xcode (**Product → Archive**) or Transporter,
 |------------|-----|
 | App Sandbox | Required for Mac App Store |
 | Outgoing network | `api.openai.com` |
-| Screen Recording | User prompt; usage string in Info.plist |
+| Screen Recording | User prompt; usage string in Info.plist. Captured with ScreenCaptureKit (macOS 14+). |
 
 ## Optional backend (not shipped)
 
 The `server.js` stack remains in the repo for local dev / LAN viewer experiments. The store build does not start or require it.
+
+## Signing identity (keep it stable)
+
+The API key lives in the Keychain, and macOS ties Keychain access to the app's code signature. Sign every release with the **same** identity and bundle ID; a build signed differently (including ad-hoc local builds) cannot read the key saved by another and users must re-enter it in Settings.
 
 ## Version bumps
 

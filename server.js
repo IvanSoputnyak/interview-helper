@@ -7,22 +7,47 @@ const { createServer } = require("http");
 const { Server } = require("socket.io");
 const OpenAI = require("openai");
 const qaStore = require("./lib/qa-store");
-const { ANALYSIS_JSON_KEYS, analysisJsonSchema } = require("./lib/analysis-schema");
+const {
+  DEFAULT_ANALYZE_PROMPT: CONTRACT_ANALYZE_PROMPT,
+  IMPROVE_SYSTEM_PROMPT,
+  SYSTEM_PROMPT,
+  analysisJsonSchema,
+  buildImprovePrompt,
+  pickAnalysisFields,
+  resolveModel,
+  stripCodeFences,
+  withOriginalQuestionIfMissing,
+} = require("./lib/analysis-schema");
 
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer);
 
 const DEFAULT_PORT = Number(process.env.PORT) || 3000;
-const MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+const MODEL = resolveModel(process.env.OPENAI_MODEL);
 const MAX_FILE_SIZE_BYTES = 8 * 1024 * 1024;
 const MAX_HISTORY_ITEMS = Number(process.env.HISTORY_MAX_ITEMS) || 25;
+const QA_QUESTION_MAX_CHARS = 4000;
+const QA_ANSWER_MAX_CHARS = 12000;
+const ALLOWED_IMAGE_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+]);
+const DEFAULT_ANALYZE_PROMPT = process.env.ANALYZE_PROMPT || CONTRACT_ANALYZE_PROMPT;
 const VIEWER_TOKEN =
   process.env.VIEWER_TOKEN || crypto.randomBytes(12).toString("hex");
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_FILE_SIZE_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_IMAGE_TYPES.has(file.mimetype)) {
+      return cb(null, true);
+    }
+    return cb(new multer.MulterError("LIMIT_UNEXPECTED_FILE", file.fieldname));
+  },
 });
 
 const openai = process.env.OPENAI_API_KEY
@@ -49,9 +74,17 @@ function tokenFromRequest(req) {
   return req.get("x-viewer-token") || req.query.token || null;
 }
 
+function isValidToken(token) {
+  if (typeof token !== "string") {
+    return false;
+  }
+  const given = Buffer.from(token);
+  const expected = Buffer.from(VIEWER_TOKEN);
+  return given.length === expected.length && crypto.timingSafeEqual(given, expected);
+}
+
 function requireViewerToken(req, res, next) {
-  const token = tokenFromRequest(req);
-  if (!token || token !== VIEWER_TOKEN) {
+  if (!isValidToken(tokenFromRequest(req))) {
     return res.status(401).json({ error: "Unauthorized viewer token." });
   }
   return next();
@@ -67,7 +100,7 @@ function normalizeAnalysisShape(parsed) {
     summary: parsed.summary || "No summary",
     question: parsed.question || parsed.summary || "",
     solution: parsed.solution || "",
-    codeSnippet: parsed.codeSnippet || "",
+    codeSnippet: stripCodeFences(parsed.codeSnippet || ""),
     explanation: parsed.explanation || "",
     algorithmWhy: parsed.algorithmWhy || "",
     timeComplexity: parsed.timeComplexity || "",
@@ -77,12 +110,24 @@ function normalizeAnalysisShape(parsed) {
   };
 }
 
+/** Parse model JSON; on failure keep `fallback` fields and surface the raw text as the summary. */
+function parseModelOutput(outputText, fallback = {}) {
+  try {
+    return JSON.parse(outputText);
+  } catch {
+    return {
+      ...fallback,
+      summary: outputText || "Could not parse model output.",
+    };
+  }
+}
+
 function toQA(analysis) {
   return {
     id: analysis.id,
     at: analysis.createdAt,
-    q: (analysis.question || analysis.summary || "").slice(0, 4000),
-    a: (analysis.codeSnippet || analysis.solution || "").slice(0, 12000),
+    q: (analysis.question || analysis.summary || "").slice(0, QA_QUESTION_MAX_CHARS),
+    a: (analysis.codeSnippet || analysis.solution || "").slice(0, QA_ANSWER_MAX_CHARS),
   };
 }
 
@@ -96,16 +141,37 @@ function commitAnalysis(analysis, { replaceQA = false } = {}) {
     qaStore.append(row);
   }
   io.emit("analysis:update", latestAnalysis);
-  io.emit("analysis:history", analysisHistory);
   io.emit("qa:list", qaStore.list());
 }
 
-app.use(express.json({ limit: "1mb" }));
+function analysisRequest(schemaName, system, content) {
+  return {
+    model: MODEL,
+    input: [
+      { role: "system", content: system },
+      { role: "user", content },
+    ],
+    text: {
+      format: {
+        type: "json_schema",
+        name: schemaName,
+        schema: analysisJsonSchema,
+        strict: true,
+      },
+    },
+  };
+}
+
+// Registered before express.static so public/viewer.html is never served without a token.
+app.get(["/viewer", "/viewer.html"], requireViewerToken, (_req, res) => {
+  res.sendFile(path.join(__dirname, "public", "viewer.html"));
+});
+
 app.use(express.static(path.join(__dirname, "public")));
 
 io.use((socket, next) => {
   const token = socket.handshake.auth.token || socket.handshake.query.token;
-  if (!token || token !== VIEWER_TOKEN) {
+  if (!isValidToken(token)) {
     return next(new Error("unauthorized"));
   }
   return next();
@@ -113,21 +179,17 @@ io.use((socket, next) => {
 
 io.on("connection", (socket) => {
   socket.emit("analysis:update", latestAnalysis);
-  socket.emit("analysis:history", analysisHistory);
   socket.emit("qa:list", qaStore.list());
 });
 
 app.get("/api/health", (_req, res) => {
-  const ip = _req.ip || "";
-  const isLocalRequest =
-    ip === "::1" || ip === "127.0.0.1" || ip.endsWith("127.0.0.1");
+  const address = httpServer.address();
   res.json({
     ok: true,
-    hasOpenAiKey: Boolean(process.env.OPENAI_API_KEY),
+    hasOpenAiKey: Boolean(openai),
     model: MODEL,
     viewerTokenConfigured: Boolean(process.env.VIEWER_TOKEN),
-    viewerToken: isLocalRequest ? VIEWER_TOKEN : undefined,
-    port: Number(process.env.PORT) || DEFAULT_PORT,
+    port: typeof address === "object" && address ? address.port : DEFAULT_PORT,
   });
 });
 
@@ -143,181 +205,77 @@ app.get("/api/qa", requireViewerToken, (_req, res) => {
   res.json({ items: qaStore.list() });
 });
 
-app.post("/api/analyze", upload.single("screenshot"), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: "Missing screenshot file." });
-    }
+app.post(
+  "/api/analyze",
+  requireViewerToken,
+  upload.single("screenshot"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "Missing screenshot file." });
+      }
+      if (!openai) {
+        return res.status(400).json({ error: "OPENAI_API_KEY is missing." });
+      }
 
-    const prompt =
-      (req.body && req.body.prompt) ||
-      "Analyze this screenshot and return a short summary plus actionable help.";
+      const prompt = (req.body && req.body.prompt) || DEFAULT_ANALYZE_PROMPT;
+      const dataUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
 
-    if (!openai) {
+      const completion = await openai.responses.create(
+        analysisRequest("screen_analysis", SYSTEM_PROMPT, [
+          { type: "input_text", text: prompt },
+          { type: "input_image", image_url: dataUrl },
+        ]),
+      );
+
       commitAnalysis({
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString(),
-        summary: "OPENAI_API_KEY is missing.",
-        question: "Screenshot capture",
-        solution:
-          "Add OPENAI_API_KEY to your .env and restart. Then run a new analysis.",
-        codeSnippet: "",
-        explanation: "",
-        algorithmWhy: "",
-        timeComplexity: "",
-        spaceComplexity: "",
-        detectedContentType: "unknown",
-        raw: {
-          fallback: true,
-          reason: "No OpenAI client configured.",
-        },
+        ...normalizeAnalysisShape(parseModelOutput(completion.output_text)),
       });
       return res.json(latestAnalysis);
+    } catch (error) {
+      return res.status(500).json({
+        error: "Failed to analyze screenshot.",
+        details: error.message,
+      });
     }
-
-    const base64Image = req.file.buffer.toString("base64");
-    const mimeType = req.file.mimetype || "image/png";
-    const dataUrl = `data:${mimeType};base64,${base64Image}`;
-
-    const completion = await openai.responses.create({
-      model: MODEL,
-      input: [
-        {
-          role: "system",
-          content:
-            "You are a FAANG-style interview question solver. Give concise, simple wording.",
-        },
-        {
-          role: "user",
-          content: [
-            { type: "input_text", text: prompt },
-            { type: "input_image", image_url: dataUrl },
-            {
-              type: "input_text",
-              text:
-                `Prefer an efficient solution (not brute force, but not over-engineered). Return strict JSON with keys: ${ANALYSIS_JSON_KEYS}. Put the problem statement in question. Keep words minimal and simple.`,
-            },
-          ],
-        },
-      ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "screen_analysis",
-          schema: analysisJsonSchema,
-          strict: true,
-        },
-      },
-    });
-
-    let parsed;
-    try {
-      parsed = JSON.parse(completion.output_text);
-    } catch (_error) {
-      parsed = {
-        summary: completion.output_text || "Could not parse model output.",
-        question: "",
-        solution: "",
-        codeSnippet: "",
-        explanation: "",
-        algorithmWhy: "",
-        timeComplexity: "",
-        spaceComplexity: "",
-        detectedContentType: "unknown",
-      };
-    }
-
-    commitAnalysis({
-      id: crypto.randomUUID(),
-      createdAt: new Date().toISOString(),
-      ...normalizeAnalysisShape(parsed),
-    });
-    return res.json(latestAnalysis);
-  } catch (error) {
-    return res.status(500).json({
-      error: "Failed to analyze screenshot.",
-      details: error.message,
-    });
-  }
-});
+  },
+);
 
 app.post("/api/improve", requireViewerToken, async (_req, res) => {
   try {
     if (!openai) {
       return res.status(400).json({ error: "OPENAI_API_KEY is missing." });
     }
-    if (!latestAnalysis || !latestAnalysis.summary) {
+    // Snapshot: a concurrent /api/analyze may replace latestAnalysis while we await the model.
+    const current = latestAnalysis;
+    if (!current.id) {
       return res.status(400).json({ error: "No analysis to improve yet." });
     }
 
-    const improvementPrompt = [
-      "Improve this interview solution.",
-      "Target FAANG expectations.",
-      "Avoid brute force unless it is optimal.",
-      "Use few words and simple words.",
-      `Return strict JSON keys: ${ANALYSIS_JSON_KEYS}.`,
-      "",
-      `Current question: ${latestAnalysis.question || latestAnalysis.summary}`,
-      `Current summary: ${latestAnalysis.summary}`,
-      `Current solution: ${latestAnalysis.solution}`,
-      `Current code: ${latestAnalysis.codeSnippet}`,
-      `Current explanation: ${latestAnalysis.explanation}`,
-      `Current algorithmWhy: ${latestAnalysis.algorithmWhy}`,
-      `Current timeComplexity: ${latestAnalysis.timeComplexity}`,
-      `Current spaceComplexity: ${latestAnalysis.spaceComplexity}`,
-    ].join("\n");
+    const improvementPrompt = buildImprovePrompt(current);
 
-    const completion = await openai.responses.create({
-      model: MODEL,
-      input: [
-        {
-          role: "system",
-          content:
-            "You are an interview coach improving solutions for correctness, clarity, and complexity.",
-        },
-        {
-          role: "user",
-          content: [{ type: "input_text", text: improvementPrompt }],
-        },
-      ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "screen_analysis_improved",
-          schema: analysisJsonSchema,
-          strict: true,
-        },
-      },
-    });
-
-    let parsed;
-    try {
-      parsed = JSON.parse(completion.output_text);
-    } catch (_error) {
-      parsed = {
-        summary: completion.output_text || "Could not parse improved output.",
-        question: latestAnalysis.question || latestAnalysis.summary || "",
-        solution: latestAnalysis.solution || "",
-        codeSnippet: latestAnalysis.codeSnippet || "",
-        explanation: latestAnalysis.explanation || "",
-        algorithmWhy: latestAnalysis.algorithmWhy || "",
-        timeComplexity: latestAnalysis.timeComplexity || "",
-        spaceComplexity: latestAnalysis.spaceComplexity || "",
-        detectedContentType: latestAnalysis.detectedContentType || "unknown",
-      };
-    }
-
-    const improved = normalizeAnalysisShape(parsed);
-    commitAnalysis(
-      {
-        id: latestAnalysis.id,
-        createdAt: new Date().toISOString(),
-        ...improved,
-        question: latestAnalysis.question || improved.question,
-      },
-      { replaceQA: true },
+    const completion = await openai.responses.create(
+      analysisRequest("screen_analysis_improved", IMPROVE_SYSTEM_PROMPT, [
+        { type: "input_text", text: improvementPrompt },
+      ]),
     );
-    return res.json(latestAnalysis);
+
+    const parsed = parseModelOutput(completion.output_text, pickAnalysisFields(current));
+    const committed = {
+      id: current.id,
+      createdAt: new Date().toISOString(),
+      ...normalizeAnalysisShape(withOriginalQuestionIfMissing(parsed, current)),
+    };
+    // Only replace the live view if no newer analysis arrived meanwhile.
+    if (latestAnalysis.id === current.id) {
+      commitAnalysis(committed, { replaceQA: true });
+    } else {
+      qaStore.upsert(toQA(committed));
+      io.emit("qa:list", qaStore.list());
+    }
+    return res.json(committed);
   } catch (error) {
     return res.status(500).json({
       error: "Failed to improve solution.",
@@ -330,8 +288,17 @@ app.get("/", (_req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-app.get("/viewer", requireViewerToken, (_req, res) => {
-  res.sendFile(path.join(__dirname, "public", "viewer.html"));
+// Turn multer errors (oversized / non-image upload) into JSON instead of Express's HTML 500.
+app.use((error, _req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    const status = error.code === "LIMIT_FILE_SIZE" ? 413 : 400;
+    const message =
+      error.code === "LIMIT_FILE_SIZE"
+        ? `Screenshot exceeds ${MAX_FILE_SIZE_BYTES / (1024 * 1024)} MB.`
+        : "Screenshot must be a PNG, JPEG, WebP, or GIF image.";
+    return res.status(status).json({ error: message });
+  }
+  return next(error);
 });
 
 function startListening(port = DEFAULT_PORT, host = "0.0.0.0") {
@@ -357,6 +324,7 @@ module.exports = {
   startListening,
   toQA,
   qaStore,
+  parseModelOutput,
 };
 
 if (require.main === module) {
@@ -364,8 +332,9 @@ if (require.main === module) {
   startListening()
     .then(({ port }) => {
       console.log(`Interview Helper listening on http://localhost:${port}`);
+      console.log(`Viewer: http://<this-mac>.local:${port}/viewer?token=${VIEWER_TOKEN}`);
       console.log(
-        "If another device cannot open the viewer URL: on this Mac allow Node through the firewall (IH menu → Allow Node for incoming connections…) or System Settings → Network → Firewall.",
+        "If another device cannot open the viewer URL, allow Node through the firewall: System Settings → Network → Firewall.",
       );
     })
     .catch((error) => {

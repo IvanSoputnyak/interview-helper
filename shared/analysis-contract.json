@@ -1,0 +1,81 @@
+{
+  "defaultModel": "gpt-6.1-sol",
+  "retiredDefaultModels": ["gpt-4.1-mini"],
+  "systemPrompt": "You are an expert competitive programmer and technical interviewer. You read coding problems from screenshots and return correct, efficient solutions. Be concise and use simple words.",
+  "defaultAnalyzePrompt": [
+    "Solve the coding interview problem in this screenshot.",
+    "- Use the programming language and function signature shown on screen; if none is visible, use Python.",
+    "- Give an efficient solution: optimal or near-optimal; brute force only if it is optimal; not over-engineered.",
+    "- Respect the constraints shown (input sizes, value ranges) and handle edge cases.",
+    "- If the problem is cut off or unclear, solve what is visible and say what is missing in summary.",
+    "- If it is not a coding problem, set detectedContentType accordingly, answer briefly in summary, and leave fields that do not apply empty.",
+    "- Use few, simple words."
+  ],
+  "improveSystemPrompt": "You are a senior technical interviewer reviewing a candidate's solution for correctness, edge cases, and complexity. Be concise and use simple words.",
+  "improveInstructions": [
+    "Review this interview solution.",
+    "- First check correctness against the problem, its constraints, and edge cases.",
+    "- If it is already correct and optimal, keep the code unchanged and say so in summary.",
+    "- Otherwise fix, in this order: bugs, missed edge cases, then time/space complexity.",
+    "- Keep the same programming language and function signature."
+  ],
+  "explainSystemPrompt": "You are a patient tutor explaining coding interview solutions to a beginner. Assume no prior knowledge of the algorithm. Use plain, everyday words.",
+  "explainInstructions": [
+    "Explain this solution so a beginner fully understands it.",
+    "1. The idea: say what the code does in plain words, then give one everyday analogy.",
+    "2. Walk through: pick one small input and trace the code step by step, showing the value of each variable after every step.",
+    "3. Why not brute force: describe the obvious slow approach and show with concrete numbers (for the stated input size) why it is too slow.",
+    "4. Watch out: list the common mistakes and the edge cases this code handles.",
+    "Use short sentences. Define any technical term the first time you use it.",
+    "Plain text only: no markdown, no code fences. Use the four numbered section titles above."
+  ],
+  "solutionContextKeys": [
+    "question",
+    "summary",
+    "solution",
+    "codeSnippet",
+    "explanation",
+    "algorithmWhy",
+    "timeComplexity",
+    "spaceComplexity"
+  ],
+  "fields": [
+    {
+      "key": "summary",
+      "description": "One line: the approach and its key idea. If the problem is cut off or unclear, say what is missing."
+    },
+    {
+      "key": "question",
+      "description": "The problem statement as read from the screen, including constraints and examples if visible."
+    },
+    {
+      "key": "solution",
+      "description": "The approach in 2-4 short steps."
+    },
+    {
+      "key": "codeSnippet",
+      "description": "Complete, runnable solution. Raw code only: no markdown fences and no prose around it."
+    },
+    {
+      "key": "explanation",
+      "description": "Walk through one example input step by step, briefly."
+    },
+    {
+      "key": "algorithmWhy",
+      "description": "Why this approach fits, and why simpler or brute-force alternatives are worse."
+    },
+    {
+      "key": "timeComplexity",
+      "description": "Big-O time with variables defined, e.g. O(n log n) where n is the array length."
+    },
+    {
+      "key": "spaceComplexity",
+      "description": "Big-O extra space with variables defined, e.g. O(n)."
+    },
+    {
+      "key": "detectedContentType",
+      "description": "What the screenshot shows.",
+      "enum": ["coding_problem", "system_design", "multiple_choice", "other"]
+    }
+  ]
+}

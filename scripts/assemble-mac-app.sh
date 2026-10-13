@@ -54,7 +54,7 @@ data = {
     "CFBundleShortVersionString": "1.0.0",
     "CFBundleExecutable": "InterviewHelperMac",
     "CFBundlePackageType": "APPL",
-    "LSMinimumSystemVersion": "13.0",
+    "LSMinimumSystemVersion": "14.0",
     "LSUIElement": True,
     "NSPrincipalClass": "NSApplication",
     "NSScreenCaptureUsageDescription": (

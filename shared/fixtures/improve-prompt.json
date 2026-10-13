@@ -1,0 +1,15 @@
+{
+  "note": "Shared by tests/analysis-schema.test.js and PromptContractTests.swift: both builders must produce expectedImprovePrompt exactly. Question is empty on purpose (falls back to summary).",
+  "analysis": {
+    "summary": "Hash map of seen values",
+    "question": "",
+    "solution": "1. Walk once\n2. Look up target - x",
+    "codeSnippet": "class Solution {\n    public int[] twoSum(int[] nums, int target) { return new int[0]; }\n}",
+    "explanation": "nums=[2,7], target=9",
+    "algorithmWhy": "O(1) lookups",
+    "timeComplexity": "O(n)",
+    "spaceComplexity": "O(n)",
+    "detectedContentType": "coding_problem"
+  },
+  "expectedImprovePrompt": "Review this interview solution.\n- First check correctness against the problem, its constraints, and edge cases.\n- If it is already correct and optimal, keep the code unchanged and say so in summary.\n- Otherwise fix, in this order: bugs, missed edge cases, then time/space complexity.\n- Keep the same programming language and function signature.\n\nCurrent question: Hash map of seen values\nCurrent summary: Hash map of seen values\nCurrent solution: 1. Walk once\n2. Look up target - x\nCurrent codeSnippet: class Solution {\n    public int[] twoSum(int[] nums, int target) { return new int[0]; }\n}\nCurrent explanation: nums=[2,7], target=9\nCurrent algorithmWhy: O(1) lookups\nCurrent timeComplexity: O(n)\nCurrent spaceComplexity: O(n)"
+}

@@ -1,9 +1,15 @@
 import Foundation
+import os
 
 public enum QAStore {
+    public static let maxItemsDefaultsKey = "IH.qaMaxItems"
+    public static let defaultMaxItems = 25
+    private static let maxItemsCap = 500
+    private static let log = Logger(subsystem: KeychainStore.service, category: "QAStore")
+
     public static var maxItems: Int {
-        let n = UserDefaults.standard.integer(forKey: "IH.qaMaxItems")
-        return n > 0 ? min(n, 500) : 25
+        let n = UserDefaults.standard.integer(forKey: maxItemsDefaultsKey)
+        return n > 0 ? min(n, maxItemsCap) : defaultMaxItems
     }
 
     public static var fileURL: URL {
@@ -17,7 +23,7 @@ public enum QAStore {
     }
 
     public static func list() -> [QARecord] {
-        readAll().prefix(maxItems).map { $0 }
+        Array(readAll().prefix(maxItems))
     }
 
     public static func append(_ entry: QARecord) {
@@ -29,35 +35,32 @@ public enum QAStore {
     public static func upsert(_ entry: QARecord) {
         var items = readAll()
         if let index = items.firstIndex(where: { $0.id == entry.id }) {
-            var row = items[index]
-            row.at = entry.at
-            row.q = entry.q
-            row.a = entry.a
-            items[index] = row
+            items[index] = entry
         } else {
             items.insert(entry, at: 0)
         }
         writeAll(Array(items.prefix(maxItems)))
     }
 
+    /// Corrupt lines are skipped so one bad row never wipes the rest of the history.
     private static func readAll() -> [QARecord] {
-        let url = fileURL
-        guard let data = try? Data(contentsOf: url), !data.isEmpty else {
+        guard let data = try? Data(contentsOf: fileURL), !data.isEmpty else {
             return []
         }
-        var rows: [QARecord] = []
-        for line in String(data: data, encoding: .utf8)?.split(separator: "\n", omittingEmptySubsequences: true) ?? [] {
-            if let row = try? JSONDecoder().decode(QARecord.self, from: Data(line.utf8)) {
-                rows.append(row)
-            }
-        }
-        return rows
+        let decoder = JSONDecoder()
+        let lines = String(decoding: data, as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: true)
+        return lines.compactMap { try? decoder.decode(QARecord.self, from: Data($0.utf8)) }
     }
 
     private static func writeAll(_ items: [QARecord]) {
         let url = fileURL
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let body = items.compactMap { try? String(data: JSONEncoder().encode($0), encoding: .utf8) }.joined(separator: "\n")
-        try? (body.isEmpty ? "" : body + "\n").write(to: url, atomically: true, encoding: .utf8)
+        let encoder = JSONEncoder()
+        let body = items.compactMap { try? String(decoding: encoder.encode($0), as: UTF8.self) }.joined(separator: "\n")
+        do {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try (body.isEmpty ? "" : body + "\n").write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            log.error("Failed to write Q&A history to \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
     }
 }

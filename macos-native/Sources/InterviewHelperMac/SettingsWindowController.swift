@@ -5,31 +5,44 @@ enum UDKeys {
     static let promptUnlockEnabled = "IH.promptUnlockEnabled"
     static let customPromptText = "IH.customPromptText"
     static let hasShownMenuBarHint = "IH.hasShownMenuBarHint"
-    static let openAIModel = "IH.openAIModel"
 }
 
 @MainActor
 final class SettingsWindowController: NSWindowController {
     private let apiKeyField = NSSecureTextField()
     private let modelField = NSTextField()
+    private let effortPopup = NSPopUpButton()
+    private static let defaultEffortTitle = "Default (model decides)"
+    private static let contentWidth: CGFloat = 440
 
     init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 440, height: 180),
+            contentRect: NSRect(x: 0, y: 0, width: Self.contentWidth, height: 1),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
         )
         window.title = "Settings"
-        window.center()
         super.init(window: window)
         setupUI()
-        loadValues()
+        // Height follows the constraint chain so new rows can never overlap the Save button.
+        if let content = window.contentView {
+            window.setContentSize(NSSize(width: Self.contentWidth, height: content.fittingSize.height))
+        }
+        window.center()
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    /// Reloads stored values each time so unsaved edits from a closed window never linger.
+    func present() {
+        loadValues()
+        showWindow(nil)
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc private func save() {
@@ -40,7 +53,7 @@ final class SettingsWindowController: NSWindowController {
             } else {
                 try KeychainStore.saveAPIKey(key)
             }
-            UserDefaults.standard.set(modelField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: UDKeys.openAIModel)
+            ModelSettings.save(model: modelField.stringValue, reasoningEffort: selectedEffort())
             window?.close()
         } catch {
             NSAlert.show(title: "Could not save", message: error.localizedDescription)
@@ -66,6 +79,10 @@ final class SettingsWindowController: NSWindowController {
         modelField.translatesAutoresizingMaskIntoConstraints = false
         modelField.placeholderString = OpenAIAnalyzer.defaultModel
 
+        let effortLabel = label("Reasoning effort (higher = better answers, slower, costlier)")
+        effortPopup.translatesAutoresizingMaskIntoConstraints = false
+        effortPopup.addItems(withTitles: [Self.defaultEffortTitle] + ReasoningEffort.allCases.map { $0.rawValue.capitalized })
+
         let hint = label("Your key stays in the Mac Keychain. Screenshots are sent only to OpenAI.")
         hint.font = NSFont.systemFont(ofSize: 11)
         hint.textColor = .secondaryLabelColor
@@ -75,7 +92,7 @@ final class SettingsWindowController: NSWindowController {
         saveButton.keyEquivalent = "\r"
         saveButton.translatesAutoresizingMaskIntoConstraints = false
 
-        for view in [keyLabel, apiKeyField, modelLabel, modelField, hint, saveButton] {
+        for view in [keyLabel, apiKeyField, modelLabel, modelField, effortLabel, effortPopup, hint, saveButton] {
             content.addSubview(view)
         }
 
@@ -92,7 +109,12 @@ final class SettingsWindowController: NSWindowController {
             modelField.topAnchor.constraint(equalTo: modelLabel.bottomAnchor, constant: 6),
             hint.leadingAnchor.constraint(equalTo: keyLabel.leadingAnchor),
             hint.trailingAnchor.constraint(equalTo: apiKeyField.trailingAnchor),
-            hint.topAnchor.constraint(equalTo: modelField.bottomAnchor, constant: 10),
+            effortLabel.leadingAnchor.constraint(equalTo: keyLabel.leadingAnchor),
+            effortLabel.topAnchor.constraint(equalTo: modelField.bottomAnchor, constant: 12),
+            effortPopup.leadingAnchor.constraint(equalTo: keyLabel.leadingAnchor),
+            effortPopup.topAnchor.constraint(equalTo: effortLabel.bottomAnchor, constant: 6),
+            hint.topAnchor.constraint(equalTo: effortPopup.bottomAnchor, constant: 10),
+            saveButton.topAnchor.constraint(equalTo: hint.bottomAnchor, constant: 14),
             saveButton.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -pad),
             saveButton.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -pad),
         ])
@@ -100,6 +122,28 @@ final class SettingsWindowController: NSWindowController {
 
     private func loadValues() {
         apiKeyField.stringValue = KeychainStore.loadAPIKey() ?? ""
-        modelField.stringValue = UserDefaults.standard.string(forKey: UDKeys.openAIModel) ?? OpenAIAnalyzer.defaultModel
+        let settings = ModelSettings.load()
+        modelField.stringValue = settings.model
+        effortPopup.selectItem(at: Self.popupIndex(for: settings.reasoningEffort))
+    }
+
+    private func selectedEffort() -> ReasoningEffort? {
+        Self.effort(atPopupIndex: effortPopup.indexOfSelectedItem)
+    }
+
+    // Popup rows: index 0 is "Default (model decides)" (nil), then `ReasoningEffort.allCases` in order.
+
+    private static func popupIndex(for effort: ReasoningEffort?) -> Int {
+        guard let effort, let position = ReasoningEffort.allCases.firstIndex(of: effort) else {
+            return 0
+        }
+        return position + 1
+    }
+
+    private static func effort(atPopupIndex index: Int) -> ReasoningEffort? {
+        guard index > 0, index <= ReasoningEffort.allCases.count else {
+            return nil
+        }
+        return ReasoningEffort.allCases[index - 1]
     }
 }

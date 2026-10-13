@@ -11,9 +11,17 @@ process.env.QA_STORE_PATH = path.join(
   `ih-qa-api-${process.pid}.jsonl`,
 );
 
-const { startListening, httpServer, toQA } = require("../server");
+const { startListening, httpServer, toQA, parseModelOutput } = require("../server");
 
+const AUTH = { "x-viewer-token": "test-token" };
 let baseUrl = "";
+
+function screenshotForm(type = "image/png", bytes = [137, 80, 78, 71]) {
+  const form = new FormData();
+  form.append("prompt", "test prompt");
+  form.append("screenshot", new Blob([new Uint8Array(bytes)], { type }), "capture.png");
+  return form;
+}
 
 test.before(async () => {
   const { port } = await startListening(0, "127.0.0.1");
@@ -29,7 +37,7 @@ test.after(async () => {
   }
 });
 
-test("viewer route requires token", async () => {
+test("viewer page rejects missing token and serves with valid token", async () => {
   const unauthorized = await fetch(`${baseUrl}/viewer`);
   assert.equal(unauthorized.status, 401);
 
@@ -37,27 +45,35 @@ test("viewer route requires token", async () => {
   assert.equal(authorized.status, 200);
 });
 
-test("latest/history require token", async () => {
+test("viewer.html static path cannot bypass the token check", async () => {
+  const response = await fetch(`${baseUrl}/viewer.html`);
+  assert.equal(response.status, 401);
+});
+
+test("wrong token of a different length is rejected", async () => {
+  const response = await fetch(`${baseUrl}/api/latest`, {
+    headers: { "x-viewer-token": "nope" },
+  });
+  assert.equal(response.status, 401);
+});
+
+test("latest and history reject missing token and return data with token", async () => {
   const latestUnauthorized = await fetch(`${baseUrl}/api/latest`);
   assert.equal(latestUnauthorized.status, 401);
 
-  const latestAuthorized = await fetch(`${baseUrl}/api/latest`, {
-    headers: { "x-viewer-token": "test-token" },
-  });
+  const latestAuthorized = await fetch(`${baseUrl}/api/latest`, { headers: AUTH });
   assert.equal(latestAuthorized.status, 200);
 
-  const historyAuthorized = await fetch(`${baseUrl}/api/history`, {
-    headers: { "x-viewer-token": "test-token" },
-  });
+  const historyAuthorized = await fetch(`${baseUrl}/api/history`, { headers: AUTH });
   assert.equal(historyAuthorized.status, 200);
   const payload = await historyAuthorized.json();
   assert.ok(Array.isArray(payload.items));
 });
 
-test("toQA keeps only q and a", () => {
+test("toQA prefers question and code snippet", () => {
   const row = toQA({
     id: "x",
-    createdAt: "2020-01-01T00:00:00.000Z",
+    createdAt: "2100-01-01T00:00:00.000Z",
     question: "Find duplicate",
     summary: "summary",
     codeSnippet: "return 1;",
@@ -65,48 +81,78 @@ test("toQA keeps only q and a", () => {
   });
   assert.deepEqual(row, {
     id: "x",
-    at: "2020-01-01T00:00:00.000Z",
+    at: "2100-01-01T00:00:00.000Z",
     q: "Find duplicate",
     a: "return 1;",
   });
 });
 
-test("analyze writes history entry when no api key", async () => {
-  const form = new FormData();
-  form.append("prompt", "test prompt");
-  form.append(
-    "screenshot",
-    new Blob([new Uint8Array([137, 80, 78, 71])], { type: "image/png" }),
-    "capture.png",
-  );
+test("toQA falls back to summary and solution when question and code are empty", () => {
+  const row = toQA({ id: "y", createdAt: "t", summary: "sum", solution: "sol" });
+  assert.equal(row.q, "sum");
+  assert.equal(row.a, "sol");
+});
 
-  const analyzeRes = await fetch(`${baseUrl}/api/analyze`, {
+test("parseModelOutput returns parsed JSON or keeps fallback fields on bad JSON", () => {
+  assert.deepEqual(parseModelOutput('{"summary":"ok"}'), { summary: "ok" });
+  const broken = parseModelOutput("not json", { question: "Q" });
+  assert.equal(broken.summary, "not json");
+  assert.equal(broken.question, "Q");
+  assert.equal(parseModelOutput("").summary, "Could not parse model output.");
+});
+
+test("analyze without token is rejected before upload is processed", async () => {
+  const response = await fetch(`${baseUrl}/api/analyze`, {
     method: "POST",
-    body: form,
+    body: screenshotForm(),
   });
-  assert.equal(analyzeRes.status, 200);
-  const analyzePayload = await analyzeRes.json();
-  assert.equal(typeof analyzePayload.codeSnippet, "string");
-  assert.equal(typeof analyzePayload.explanation, "string");
-  assert.equal(typeof analyzePayload.algorithmWhy, "string");
-  assert.equal(typeof analyzePayload.timeComplexity, "string");
-  assert.equal(typeof analyzePayload.spaceComplexity, "string");
+  assert.equal(response.status, 401);
+});
 
-  const historyRes = await fetch(`${baseUrl}/api/history`, {
-    headers: { "x-viewer-token": "test-token" },
-  });
-  const history = await historyRes.json();
-  assert.ok(history.items.length >= 1);
-  assert.equal(history.items[0].summary, "OPENAI_API_KEY is missing.");
+test("analyze without api key returns 400 and does not persist a QA row", async () => {
+  const before = await (await fetch(`${baseUrl}/api/qa`, { headers: AUTH })).json();
 
-  const qaRes = await fetch(`${baseUrl}/api/qa`, {
-    headers: { "x-viewer-token": "test-token" },
+  const response = await fetch(`${baseUrl}/api/analyze`, {
+    method: "POST",
+    headers: AUTH,
+    body: screenshotForm(),
   });
-  assert.equal(qaRes.status, 200);
-  const qa = await qaRes.json();
-  assert.ok(qa.items.length >= 1);
-  assert.equal(typeof qa.items[0].q, "string");
-  assert.equal(typeof qa.items[0].a, "string");
+  assert.equal(response.status, 400);
+  const payload = await response.json();
+  assert.match(payload.error, /OPENAI_API_KEY is missing/i);
+
+  const after = await (await fetch(`${baseUrl}/api/qa`, { headers: AUTH })).json();
+  assert.equal(after.items.length, before.items.length);
+});
+
+test("analyze rejects a missing screenshot with JSON 400", async () => {
+  const response = await fetch(`${baseUrl}/api/analyze`, {
+    method: "POST",
+    headers: AUTH,
+    body: new FormData(),
+  });
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /Missing screenshot/);
+});
+
+test("analyze rejects non-image uploads with JSON 400", async () => {
+  const response = await fetch(`${baseUrl}/api/analyze`, {
+    method: "POST",
+    headers: AUTH,
+    body: screenshotForm("text/html", [60, 104, 49, 62]),
+  });
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /PNG, JPEG/);
+});
+
+test("analyze rejects oversized uploads with JSON 413", async () => {
+  const response = await fetch(`${baseUrl}/api/analyze`, {
+    method: "POST",
+    headers: AUTH,
+    body: screenshotForm("image/png", new Uint8Array(8 * 1024 * 1024 + 1)),
+  });
+  assert.equal(response.status, 413);
+  assert.match((await response.json()).error, /exceeds/);
 });
 
 test("qa route requires token", async () => {
@@ -115,25 +161,23 @@ test("qa route requires token", async () => {
 });
 
 test("improve requires viewer token", async () => {
-  const unauthorized = await fetch(`${baseUrl}/api/improve`, {
-    method: "POST",
-  });
+  const unauthorized = await fetch(`${baseUrl}/api/improve`, { method: "POST" });
   assert.equal(unauthorized.status, 401);
 });
 
-test("health exposes viewer token to loopback clients", async () => {
+test("health reports status without leaking the viewer token", async () => {
   const response = await fetch(`${baseUrl}/api/health`);
   assert.equal(response.status, 200);
   const payload = await response.json();
   assert.equal(payload.ok, true);
-  assert.equal(typeof payload.viewerToken, "string");
-  assert.ok(payload.viewerToken.length > 0);
+  assert.equal(payload.viewerToken, undefined);
+  assert.equal(payload.port, Number(new URL(baseUrl).port));
 });
 
 test("improve returns clear error when api key missing", async () => {
   const response = await fetch(`${baseUrl}/api/improve`, {
     method: "POST",
-    headers: { "x-viewer-token": "test-token" },
+    headers: AUTH,
   });
   assert.equal(response.status, 400);
   const payload = await response.json();

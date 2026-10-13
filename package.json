@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
+    "contract": "node scripts/generate-swift-contract.js",
     "mac:native": "swift run --package-path macos-native InterviewHelperMac",
     "mac:app": "bash scripts/assemble-mac-app.sh release && open dist/InterviewHelperMac.app",
     "mac:app:debug": "bash scripts/assemble-mac-app.sh debug && open dist/InterviewHelperMac.app",

@@ -11,12 +11,12 @@
       <h1>Interview Helper</h1>
       <p class="muted">
         On macOS, screen capture happens from the <strong>native menu bar app</strong>
-        (<code>npm run mac:native</code>), not this page.
+        (<code>make mac-app</code>), not this page. The app is standalone and does not use this server.
       </p>
       <div class="card">
         <h3>Desktop (Mac)</h3>
         <p>
-          Tray menu: <strong>Capture active display &amp; analyze</strong>.
+          Menu bar <strong>IH</strong> → <strong>Capture &amp; Analyze</strong>, or press <strong>⌥⇧S</strong>.
         </p>
         <p class="muted">
           Grant Screen Recording permission for the native app on first run.
@@ -24,7 +24,7 @@
       </div>
       <div class="card">
         <h3>Viewer (phone/tablet)</h3>
-        <p>Use the native app menu action "Open Viewer" to open the secure token URL on this Mac, then copy/share it to another device.</p>
+        <p>Open the viewer URL printed by <code>npm start</code> (it includes <code>?token=…</code>) on a device on the same Wi‑Fi.</p>
       </div>
     </main>
   </body>

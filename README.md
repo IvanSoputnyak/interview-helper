@@ -4,16 +4,20 @@ Standalone Mac App Store–ready menu bar app: capture a coding question, analyz
 
 ## Features
 
-- Native macOS tray app (Swift/AppKit), no Electron.
+- Native macOS tray app (Swift/AppKit), no Electron. Requires macOS 14+ (ScreenCaptureKit).
 - Global hotkey: `Option + Shift + S`.
 - Direct OpenAI vision API (no developer-hosted backend).
 - API key stored in Keychain; minimal Q&A history on disk (`q` / `a` only).
+- **Auto-reconnect**: network drops, timeouts, and OpenAI 408/429/5xx are retried up to 3× (1s/2s/4s backoff); when offline, waits up to 30s for the network first. Progress shows in the menu status / Improve button. Bad keys, 4xx, and `insufficient_quota` fail immediately.
+- **Results window**: **Explain simply** adds a beginner walkthrough under the solution (idea + analogy, traced example, why not brute force, pitfalls; cached per answer, toggle Hide/Show); **Hide solution** collapses the answer to just the question (stays hidden for new captures until shown again); **Improve** reviews and fixes the solution.
+- **Settings → Reasoning effort**: Default (model decides) / Low / Medium / High, applied to analyze, improve and explain.
 - **Analysis prompt**: built-in default; optional custom prompt via menu.
+- **Prompts + output schema live in one file**, [`shared/analysis-contract.json`](shared/analysis-contract.json), shared by the app and the Node server. After editing it run `make contract` (regenerates `AnalysisContract.generated.swift`); `make test` fails while the Swift copy is stale.
 - **Mac App Store**: see [APP_STORE.md](APP_STORE.md).
 
 ### Optional dev backend (not required for the app)
 
-- Node server + token-protected viewer for phone/tablet on the same Wi‑Fi (`npm start`).
+- Node server + token-protected viewer for phone/tablet on the same Wi‑Fi (`npm start`). The native app does not talk to it; clients POST screenshots to `/api/analyze` with the viewer token.
 
 ## Quick start (Makefile)
 
@@ -45,11 +49,7 @@ Run `make` or `make help` for the full list.
 3. Set at least:
    - `OPENAI_API_KEY`
    - `VIEWER_TOKEN` (required for secure viewer access)
-4. Run native app:
-   - `npm run mac:native` or `make mac-native`
-
-The native app attempts to start the backend automatically.  
-If you prefer manual backend control, run `npm start` or `make start` first.
+4. Run the backend: `npm start` or `make start` (the native app is independent; see Quick start).
 
 ### “I don’t see the app”
 
@@ -57,18 +57,18 @@ Interview Helper is a **menu bar app** (like Wi‑Fi or Spotlight): it does **no
 
 ## Viewer
 
-- Use menu bar **Open Viewer in Browser** or **Copy Viewer Link** (⌘⇧C).
-- Share the full URL (including `?token=...`) to a phone/tablet on the same network.
+- `npm start` prints the viewer URL: `http://<this-mac>.local:<port>/viewer?token=<VIEWER_TOKEN>`.
+- Open that full URL (including `?token=...`) on a phone/tablet on the same network.
 
 ## Environment variables
 
 - `PORT` - server port (`3000` default)
 - `OPENAI_API_KEY` - OpenAI API key
-- `OPENAI_MODEL` - model name (default `gpt-4.1-mini`)
-- `ANALYZE_PROMPT` - optional server-side default only if a client omits `prompt` (the native app always sends a prompt).
-- `VIEWER_TOKEN` - token required for `/viewer`, `/api/latest`, `/api/history`, and socket updates
-- `HISTORY_MAX_ITEMS` - in-memory history size (default `25`)
-- `IH_PROJECT_ROOT` - path where the native app runs `npm start` from (optional)
+- `OPENAI_MODEL` - model name (default: `defaultModel` in `shared/analysis-contract.json`, currently `gpt-6.1-sol`)
+- `ANALYZE_PROMPT` - optional server-side default prompt used when a client omits `prompt`
+- `VIEWER_TOKEN` - token required for `/viewer`, `/api/analyze`, `/api/improve`, `/api/latest`, `/api/history`, `/api/qa`, and socket updates (random per start if unset)
+- `HISTORY_MAX_ITEMS` - in-memory history and saved Q&A size (default `25`)
+- `QA_STORE_PATH` - saved Q&A file (default `data/qa.jsonl`)
 
 ## Commands
 
@@ -89,7 +89,7 @@ Interview Helper is a **menu bar app** (like Wi‑Fi or Spotlight): it does **no
 
 Then sign + notarize (example):
 
-1. `codesign --deep --force --options runtime --sign "Developer ID Application: <TEAM>" dist/InterviewHelperMac.app`
+1. `codesign --force --options runtime --entitlements macos-native/InterviewHelperMac.entitlements --sign "Developer ID Application: <TEAM>" dist/InterviewHelperMac.app`
 2. `ditto -c -k --keepParent dist/InterviewHelperMac.app dist/InterviewHelperMac.zip`
 3. `xcrun notarytool submit dist/InterviewHelperMac.zip --keychain-profile "<PROFILE>" --wait`
 4. `xcrun stapler staple dist/InterviewHelperMac.app`

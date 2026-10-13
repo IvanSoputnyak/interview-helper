@@ -12,6 +12,7 @@ const qaListEl = document.getElementById("qaList");
 const improveBtn = document.getElementById("improveBtn");
 const improveStatusEl = document.getElementById("improveStatus");
 const params = new URLSearchParams(window.location.search);
+let shownAnalysisId = null;
 const viewerToken = params.get("token");
 
 if (!viewerToken) {
@@ -19,6 +20,7 @@ if (!viewerToken) {
 }
 
 function renderAnalysis(data) {
+  shownAnalysisId = data.id || null;
   updatedAtEl.textContent = data.createdAt || "-";
   contentTypeEl.textContent = data.detectedContentType || "unknown";
   summaryEl.textContent = data.summary || "No summary";
@@ -58,7 +60,10 @@ async function improveSolution() {
     if (!response.ok) {
       throw new Error(payload.error || "Improve failed.");
     }
-    renderAnalysis(payload);
+    // A newer capture may have replaced the one being improved; the server pushes the live view over the socket.
+    if (payload.id === shownAnalysisId) {
+      renderAnalysis(payload);
+    }
     improveStatusEl.textContent = "Improved.";
   } catch (error) {
     improveStatusEl.textContent = `Error: ${error.message}`;

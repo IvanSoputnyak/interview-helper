@@ -1,11 +1,11 @@
 import AppKit
 import Carbon
-import CoreGraphics
 import Foundation
 import InterviewHelperCore
+import os
 
 private enum TraySymbol {
-    static func menuBarIcon() -> NSImage? {
+    static func menuBarIcon() -> NSImage {
         let size = NSSize(width: 24, height: 18)
         let image = NSImage(size: size)
         image.lockFocus()
@@ -36,23 +36,34 @@ private enum TraySymbol {
     }
 }
 
+private enum HotKey {
+    /// "IHKY" — identifies our hotkey in the Carbon event callback.
+    static let signature = OSType(0x49484B59)
+    static let captureID: UInt32 = 1
+}
+
+private enum Timing {
+    static let launchHintDelay: UInt64 = 400_000_000
+    static let statusRevertDelay: UInt64 = 3_500_000_000
+}
+
 @MainActor
-final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class AppController: NSObject, NSApplicationDelegate {
+    private static let log = Logger(subsystem: KeychainStore.service, category: "App")
+
     private var statusItem: NSStatusItem?
     private var captureItem: NSMenuItem?
     private var promptUnlockMenuItem: NSMenuItem?
     private var editPromptMenuItem: NSMenuItem?
-    private var promptEditorWindow: NSWindow?
-    private var promptEditTextView: NSTextView?
     private var statusTextItem: NSMenuItem?
     private var hotKeyRef: EventHotKeyRef?
     private var hotKeyHandlerRef: EventHandlerRef?
     private var isCapturing = false
     private var statusResetTask: Task<Void, Never>?
-    private var latestAnalysis: ScreenAnalysis?
 
     private lazy var resultsWindow = ResultsWindowController()
     private lazy var settingsWindow = SettingsWindowController()
+    private lazy var promptEditorWindow = PromptEditorWindowController()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -60,10 +71,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         updateStatus("Idle")
         registerGlobalHotKey()
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 400_000_000)
+            try? await Task.sleep(nanoseconds: Timing.launchHintDelay)
             showMenuBarHintIfNeeded()
             if KeychainStore.loadAPIKey() == nil {
-                settingsWindow.showWindow(nil)
+                onOpenSettings()
             }
         }
     }
@@ -78,37 +89,45 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if isCapturing { return }
         guard let apiKey = KeychainStore.loadAPIKey(), !apiKey.isEmpty else {
             NSAlert.show(title: "API key required", message: "Add your OpenAI API key in Settings.")
-            settingsWindow.showWindow(nil)
+            onOpenSettings()
             return
         }
-        isCapturing = true
-        guard ensureScreenCapturePermission() else {
-            isCapturing = false
+        guard ScreenCapture.hasPermission() else {
             updateStatus("Screen permission required")
             showPermissionAlert()
             return
         }
-        guard let pngData = captureDisplayUnderCursor() else {
-            isCapturing = false
-            updateStatus("Capture failed")
-            NSAlert.show(title: "Capture failed", message: "Could not capture the active display.")
-            return
-        }
 
+        isCapturing = true
         setCaptureEnabled(false)
-        updateStatus("Analyzing...")
-        let model = UserDefaults.standard.string(forKey: UDKeys.openAIModel) ?? OpenAIAnalyzer.defaultModel
+        updateStatus("Capturing...")
+        let settings = ModelSettings.load()
         let prompt = effectiveAnalyzePrompt()
 
         Task { @MainActor in
+            defer {
+                isCapturing = false
+                setCaptureEnabled(true)
+            }
+            let pngData: Data
+            do {
+                pngData = try await ScreenCapture.captureDisplayUnderCursor()
+            } catch {
+                updateStatus("Capture failed")
+                NSAlert.show(title: "Capture failed", message: error.localizedDescription)
+                return
+            }
+
+            updateStatus("Analyzing...")
             do {
                 let analysis = try await OpenAIAnalyzer.analyze(
                     screenshotPng: pngData,
                     prompt: prompt,
                     apiKey: apiKey,
-                    model: model
+                    model: settings.model,
+                    reasoningEffort: settings.reasoningEffort,
+                    onRetry: { [weak self] event in self?.updateStatus(event.displayText) }
                 )
-                latestAnalysis = analysis
                 QAStore.append(QARecord.from(analysis))
                 resultsWindow.showAnalysis(analysis)
                 scheduleStatusRevert(afterBrief: "Ready")
@@ -116,23 +135,19 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 updateStatus("Analyze failed")
                 NSAlert.show(title: "Analyze failed", message: error.localizedDescription)
             }
-            isCapturing = false
-            setCaptureEnabled(true)
         }
     }
 
     @objc private func onShowResults() {
-        if let latestAnalysis {
-            resultsWindow.showAnalysis(latestAnalysis)
-        } else {
-            resultsWindow.showSavedOnly()
-        }
+        resultsWindow.showLatest()
+    }
+
+    @objc private func onShowHistory() {
+        resultsWindow.showHistory()
     }
 
     @objc private func onOpenSettings() {
-        settingsWindow.showWindow(nil)
-        settingsWindow.window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        settingsWindow.present()
     }
 
     @objc private func onOpenScreenRecordingSettings() {
@@ -151,81 +166,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ud.set(newValue, forKey: UDKeys.promptUnlockEnabled)
         promptUnlockMenuItem?.state = newValue ? .on : .off
         editPromptMenuItem?.isEnabled = newValue
-        if !newValue { promptEditorWindow?.close() }
+        if !newValue { promptEditorWindow.close() }
     }
 
     @objc private func openPromptEditor() {
         guard UserDefaults.standard.bool(forKey: UDKeys.promptUnlockEnabled) else { return }
-        if promptEditorWindow != nil {
-            promptEditorWindow?.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-
-        let padding: CGFloat = 12
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 280),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "Analysis prompt"
-        window.isReleasedWhenClosed = false
-        window.delegate = self
-        window.center()
-        window.setFrameAutosaveName("InterviewHelperPromptEditor")
-
-        let root = NSView(frame: window.frame)
-        let scroll = NSScrollView()
-        scroll.hasVerticalScroller = true
-        scroll.borderType = .bezelBorder
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        let textView = NSTextView()
-        textView.isRichText = false
-        textView.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-        textView.string = UserDefaults.standard.string(forKey: UDKeys.customPromptText) ?? AnalyzePrompt.defaultBundled
-        scroll.documentView = textView
-        promptEditTextView = textView
-
-        let saveButton = NSButton(title: "Save", target: self, action: #selector(savePromptFromEditor))
-        saveButton.translatesAutoresizingMaskIntoConstraints = false
-        let cancelButton = NSButton(title: "Cancel", target: self, action: #selector(closePromptEditor))
-        cancelButton.translatesAutoresizingMaskIntoConstraints = false
-        root.addSubview(scroll)
-        root.addSubview(saveButton)
-        root.addSubview(cancelButton)
-        NSLayoutConstraint.activate([
-            scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: padding),
-            scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -padding),
-            scroll.topAnchor.constraint(equalTo: root.topAnchor, constant: padding),
-            scroll.bottomAnchor.constraint(equalTo: saveButton.topAnchor, constant: -padding),
-            saveButton.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -padding),
-            saveButton.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -padding),
-            cancelButton.trailingAnchor.constraint(equalTo: saveButton.leadingAnchor, constant: -10),
-            cancelButton.centerYAnchor.constraint(equalTo: saveButton.centerYAnchor),
-        ])
-        window.contentView = root
-        promptEditorWindow = window
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-    }
-
-    @objc private func savePromptFromEditor() {
-        if let textView = promptEditTextView {
-            UserDefaults.standard.set(textView.string, forKey: UDKeys.customPromptText)
-        }
-        promptEditorWindow?.close()
-    }
-
-    @objc private func closePromptEditor() {
-        promptEditorWindow?.close()
-    }
-
-    func windowWillClose(_ notification: Notification) {
-        guard let closing = notification.object as? NSWindow, closing === promptEditorWindow else { return }
-        closing.delegate = nil
-        promptEditorWindow = nil
-        promptEditTextView = nil
+        promptEditorWindow.present()
     }
 
     private func effectiveAnalyzePrompt() -> String {
@@ -239,10 +185,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem = item
         item.button?.toolTip = "Interview Helper — ⌥⇧S capture"
-        if let image = TraySymbol.menuBarIcon() {
-            item.button?.image = image
-            item.button?.imagePosition = .imageOnly
-        }
+        item.button?.image = TraySymbol.menuBarIcon()
+        item.button?.imagePosition = .imageOnly
 
         let menu = NSMenu()
         menu.addItem(disabled: "Interview Helper")
@@ -255,6 +199,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         results.keyEquivalentModifierMask = .command
         results.target = self
         menu.addItem(results)
+
+        let history = NSMenuItem(title: "Show history", action: #selector(onShowHistory), keyEquivalent: "")
+        history.target = self
+        menu.addItem(history)
 
         let settings = NSMenuItem(title: "Settings…", action: #selector(onOpenSettings), keyEquivalent: ",")
         settings.target = self
@@ -290,7 +238,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func registerGlobalHotKey() {
-        let hotKeyID = EventHotKeyID(signature: OSType(0x49484B59), id: 1)
+        let hotKeyID = EventHotKeyID(signature: HotKey.signature, id: HotKey.captureID)
         var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         let callback: EventHandlerUPP = { _, eventRef, userData in
             guard let eventRef, let userData else { return OSStatus(eventNotHandledErr) }
@@ -298,15 +246,22 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
             guard GetEventParameter(eventRef, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, MemoryLayout<EventHotKeyID>.size, nil, &hkID) == noErr else {
                 return OSStatus(eventNotHandledErr)
             }
-            if hkID.signature == OSType(0x49484B59), hkID.id == 1 {
+            if hkID.signature == HotKey.signature, hkID.id == HotKey.captureID {
                 let controller = Unmanaged<AppController>.fromOpaque(userData).takeUnretainedValue()
                 DispatchQueue.main.async { controller.onCaptureAnalyze() }
                 return noErr
             }
             return OSStatus(eventNotHandledErr)
         }
-        InstallEventHandler(GetApplicationEventTarget(), callback, 1, &eventType, Unmanaged.passUnretained(self).toOpaque(), &hotKeyHandlerRef)
-        RegisterEventHotKey(UInt32(kVK_ANSI_S), UInt32(optionKey | shiftKey), hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
+        let installStatus = InstallEventHandler(GetApplicationEventTarget(), callback, 1, &eventType, Unmanaged.passUnretained(self).toOpaque(), &hotKeyHandlerRef)
+        let registerStatus = installStatus == noErr
+            ? RegisterEventHotKey(UInt32(kVK_ANSI_S), UInt32(optionKey | shiftKey), hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
+            : installStatus
+        if registerStatus != noErr {
+            // Most often another app already owns ⌥⇧S; the menu item still works.
+            Self.log.error("Global hotkey ⌥⇧S unavailable (OSStatus \(registerStatus))")
+            captureItem?.title = "Capture & Analyze (hotkey unavailable)"
+        }
     }
 
     private func updateStatus(_ status: String) {
@@ -315,28 +270,14 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func scheduleStatusRevert(afterBrief message: String) {
-        statusResetTask?.cancel()
         updateStatus(message)
         statusResetTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 3_500_000_000)
+            try? await Task.sleep(nanoseconds: Timing.statusRevertDelay)
             if !Task.isCancelled { statusTextItem?.title = "Status · Idle" }
         }
     }
 
     private func setCaptureEnabled(_ enabled: Bool) { captureItem?.isEnabled = enabled }
-
-    private func ensureScreenCapturePermission() -> Bool {
-        CGPreflightScreenCaptureAccess() || CGRequestScreenCaptureAccess()
-    }
-
-    private func captureDisplayUnderCursor() -> Data? {
-        let mousePoint = NSEvent.mouseLocation
-        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(mousePoint) }) ?? NSScreen.screens.first,
-              let num = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
-              let cgImage = CGDisplayCreateImage(CGDirectDisplayID(num.uint32Value))
-        else { return nil }
-        return NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:])
-    }
 
     private func showPermissionAlert() {
         let alert = NSAlert()
