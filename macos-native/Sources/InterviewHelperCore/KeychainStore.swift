@@ -5,7 +5,8 @@ public enum KeychainStore {
     public static let service = "com.interviewhelper.mac"
     private static let apiKeyAccount = "openai_api_key"
 
-    public static func loadAPIKey() -> String? {
+    /// `service` is overridable so tests use a throwaway item instead of the user's real key.
+    public static func loadAPIKey(service: String = service) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -21,10 +22,10 @@ public enum KeychainStore {
         return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    public static func saveAPIKey(_ key: String) throws {
+    public static func saveAPIKey(_ key: String, service: String = service) throws {
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            try deleteAPIKey()
+            try deleteAPIKey(service: service)
             return
         }
         guard let data = trimmed.data(using: .utf8) else {
@@ -54,7 +55,7 @@ public enum KeychainStore {
         throw keychainError(updateStatus)
     }
 
-    public static func deleteAPIKey() throws {
+    public static func deleteAPIKey(service: String = service) throws {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

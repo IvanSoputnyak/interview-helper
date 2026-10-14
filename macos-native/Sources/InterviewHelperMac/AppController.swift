@@ -50,6 +50,8 @@ private enum Timing {
 @MainActor
 final class AppController: NSObject, NSApplicationDelegate {
     private static let log = Logger(subsystem: KeychainStore.service, category: "App")
+    /// Shown in the terminal when the binary is run directly (e.g. `make mac-native`); launches via Finder/`open` discard stderr.
+    private static let terminalLaunchHint = "Interview Helper is running: look for \"IH\" in the menu bar (top right). Press ⌥⇧S to capture.\n"
 
     private var statusItem: NSStatusItem?
     private var captureItem: NSMenuItem?
@@ -67,6 +69,7 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        FileHandle.standardError.write(Data(Self.terminalLaunchHint.utf8))
         setupMenuBar()
         updateStatus("Idle")
         registerGlobalHotKey()

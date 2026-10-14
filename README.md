@@ -5,12 +5,12 @@ Standalone Mac App Store–ready menu bar app: capture a coding question, analyz
 ## Features
 
 - Native macOS tray app (Swift/AppKit), no Electron. Requires macOS 14+ (ScreenCaptureKit).
-- Global hotkey: `Option + Shift + S`.
+- Global hotkey: `Option + Shift + S` (captures the display under the cursor, leaving out Interview Helper's own windows; downscaled to 2048px). If another app already owns the shortcut, the menu item says "hotkey unavailable" and still works.
 - Direct OpenAI vision API (no developer-hosted backend).
-- API key stored in Keychain; minimal Q&A history on disk (`q` / `a` only).
-- **Auto-reconnect**: network drops, timeouts, and OpenAI 408/429/5xx are retried up to 3× (1s/2s/4s backoff); when offline, waits up to 30s for the network first. Progress shows in the menu status / Improve button. Bad keys, 4xx, and `insufficient_quota` fail immediately.
+- API key stored in Keychain; minimal Q&A history on disk (question, answer code, id, timestamp), viewable via menu **Show history** or the **History** button.
+- **Auto-reconnect**: network drops and OpenAI 408/429/5xx are retried up to 3× (1s/2s/4s backoff); timeouts (client or 504) are retried only once, since a slow reasoning answer already waited the full 180s; when offline, waits up to 30s for the network first. Progress shows in the menu status and on the Improve / Explain buttons. Bad keys, other 4xx, and `insufficient_quota` fail immediately.
 - **Results window**: **Explain simply** adds a beginner walkthrough under the solution (idea + analogy, traced example, why not brute force, pitfalls; cached per answer, toggle Hide/Show); **Hide solution** collapses the answer to just the question (stays hidden for new captures until shown again); **Improve** reviews and fixes the solution.
-- **Settings → Reasoning effort**: Default (model decides) / Low / Medium / High, applied to analyze, improve and explain.
+- **Settings**: OpenAI API key; **Model** (blank = default from `shared/analysis-contract.json`); **Reasoning effort** Default (model decides) / Low / Medium / High, applied to analyze, improve and explain.
 - **Analysis prompt**: built-in default; optional custom prompt via menu.
 - **Prompts + output schema live in one file**, [`shared/analysis-contract.json`](shared/analysis-contract.json), shared by the app and the Node server. After editing it run `make contract` (regenerates `AnalysisContract.generated.swift`); `make test` fails while the Swift copy is stale.
 - **Mac App Store**: see [APP_STORE.md](APP_STORE.md).
@@ -24,8 +24,7 @@ Standalone Mac App Store–ready menu bar app: capture a coding question, analyz
 From the repo root:
 
 ```bash
-make mac-app-debug   # recommended: real .app bundle + Screen Recording identity
-open dist/InterviewHelperMac.app
+make mac-app-debug   # recommended: builds the real .app bundle (Screen Recording identity) and opens it
 # First launch: Settings → paste OpenAI API key → ⌥⇧S to capture
 ```
 
@@ -53,7 +52,7 @@ Run `make` or `make help` for the full list.
 
 ### “I don’t see the app”
 
-Interview Helper is a **menu bar app** (like Wi‑Fi or Spotlight): it does **not** show in the Dock. Look at the **top-right of the screen** for **“IH”** next to the clock and click it for the menu. The first time you run it, an informational dialog explains this. When launched from Terminal, a line is also printed to stderr.
+Interview Helper is a **menu bar app** (like Wi‑Fi or Spotlight): it does **not** show in the Dock. Look at the **top-right of the screen** for **“IH”** next to the clock and click it for the menu. The first time you run it, an informational dialog explains this. When run directly from Terminal (e.g. `make mac-native`), a line is also printed to stderr.
 
 ## Viewer
 

@@ -1,6 +1,6 @@
 # Mac App Store release (standalone app, no backend)
 
-Interview Helper is now a **standalone menu bar app**: OpenAI calls run on-device, API key in Keychain, Q&A saved under `~/Library/Application Support/InterviewHelper/qa.jsonl`. No Node server required. Minimum macOS 14 (ScreenCaptureKit screenshots).
+Interview Helper is now a **standalone menu bar app**: OpenAI calls run on-device, API key in Keychain, Q&A saved in the app's sandbox container at `~/Library/Containers/com.interviewhelper.mac/Data/Library/Application Support/InterviewHelper/qa.jsonl` (unsandboxed `make mac-native` runs use `~/Library/Application Support/InterviewHelper/qa.jsonl`). No Node server required. Minimum macOS 14 (ScreenCaptureKit screenshots).
 
 ## Before you submit
 
