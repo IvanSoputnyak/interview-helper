@@ -8,7 +8,7 @@ APP_DIR="$ROOT_DIR/dist/InterviewHelperMac.app"
 
 echo ""
 echo "Next steps for signing/notarization:"
-echo "  1) codesign --deep --force --options runtime --sign \"Developer ID Application: <TEAM>\" \"$APP_DIR\""
+echo "  1) codesign --force --options runtime --entitlements \"$ROOT_DIR/macos-native/InterviewHelperMac.entitlements\" --sign \"Developer ID Application: <TEAM>\" \"$APP_DIR\""
 echo "  2) ditto -c -k --keepParent \"$APP_DIR\" \"$ROOT_DIR/dist/InterviewHelperMac.zip\""
 echo "  3) xcrun notarytool submit \"$ROOT_DIR/dist/InterviewHelperMac.zip\" --keychain-profile \"<PROFILE>\" --wait"
 echo "  4) xcrun stapler staple \"$APP_DIR\""

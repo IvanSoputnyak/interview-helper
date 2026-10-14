@@ -44,15 +44,36 @@ public struct ScreenAnalysis: Codable, Sendable, Equatable {
             id: id ?? UUID().uuidString,
             createdAt: ISO8601DateFormatter().string(from: Date()),
             summary: parsed["summary"] ?? "No summary",
-            question: parsed["question"] ?? parsed["summary"] ?? "",
+            question: nonEmpty(parsed["question"]) ?? parsed["summary"] ?? "",
             solution: parsed["solution"] ?? "",
-            codeSnippet: parsed["codeSnippet"] ?? "",
+            codeSnippet: CodeFence.strip(parsed["codeSnippet"] ?? ""),
             explanation: parsed["explanation"] ?? "",
             algorithmWhy: parsed["algorithmWhy"] ?? "",
             timeComplexity: parsed["timeComplexity"] ?? "",
             spaceComplexity: parsed["spaceComplexity"] ?? "",
             detectedContentType: parsed["detectedContentType"] ?? "unknown"
         )
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let value, !value.isEmpty else { return nil }
+        return value
+    }
+
+    /// Field value by schema key; `question` falls back to `summary` like `QARecord.from`.
+    func value(forKey key: String) -> String {
+        switch key {
+        case "summary": return summary
+        case "question": return question.isEmpty ? summary : question
+        case "solution": return solution
+        case "codeSnippet": return codeSnippet
+        case "explanation": return explanation
+        case "algorithmWhy": return algorithmWhy
+        case "timeComplexity": return timeComplexity
+        case "spaceComplexity": return spaceComplexity
+        case "detectedContentType": return detectedContentType
+        default: return ""
+        }
     }
 
     public var displayText: String {
@@ -78,6 +99,9 @@ public struct ScreenAnalysis: Codable, Sendable, Equatable {
 }
 
 public struct QARecord: Codable, Sendable, Equatable {
+    public static let questionMaxChars = 4000
+    public static let answerMaxChars = 12000
+
     public var id: String
     public var at: String
     public var q: String
@@ -94,8 +118,8 @@ public struct QARecord: Codable, Sendable, Equatable {
         QARecord(
             id: analysis.id,
             at: analysis.createdAt,
-            q: String((analysis.question.isEmpty ? analysis.summary : analysis.question).prefix(4000)),
-            a: String((analysis.codeSnippet.isEmpty ? analysis.solution : analysis.codeSnippet).prefix(12000))
+            q: String((analysis.question.isEmpty ? analysis.summary : analysis.question).prefix(questionMaxChars)),
+            a: String((analysis.codeSnippet.isEmpty ? analysis.solution : analysis.codeSnippet).prefix(answerMaxChars))
         )
     }
 }

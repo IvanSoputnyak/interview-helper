@@ -1,31 +1,23 @@
 import Foundation
 
+/// JSON schema for the model's structured output, built from `AnalysisContract` (shared/analysis-contract.json).
 public enum AnalysisSchema {
-    public static let jsonKeys =
-        "summary, question, solution, codeSnippet, explanation, algorithmWhy, timeComplexity, spaceComplexity, detectedContentType"
-
-    public static let followUpInstruction =
-        "Prefer an efficient solution (not brute force, but not over-engineered). Return strict JSON with keys: \(jsonKeys). Put the problem statement in question. Keep words minimal and simple."
+    public static let keys = AnalysisContract.fields.map(\.key)
 
     public static func makeJSONSchema() -> [String: Any] {
         [
             "type": "object",
             "additionalProperties": false,
-            "properties": [
-                "summary": ["type": "string"],
-                "question": ["type": "string"],
-                "solution": ["type": "string"],
-                "codeSnippet": ["type": "string"],
-                "explanation": ["type": "string"],
-                "algorithmWhy": ["type": "string"],
-                "timeComplexity": ["type": "string"],
-                "spaceComplexity": ["type": "string"],
-                "detectedContentType": ["type": "string"],
-            ],
-            "required": [
-                "summary", "question", "solution", "codeSnippet", "explanation",
-                "algorithmWhy", "timeComplexity", "spaceComplexity", "detectedContentType",
-            ],
+            "properties": Dictionary(uniqueKeysWithValues: AnalysisContract.fields.map { ($0.key, property(for: $0)) }),
+            "required": keys,
         ]
+    }
+
+    private static func property(for field: AnalysisField) -> [String: Any] {
+        var property: [String: Any] = ["type": "string", "description": field.description]
+        if !field.allowedValues.isEmpty {
+            property["enum"] = field.allowedValues
+        }
+        return property
     }
 }

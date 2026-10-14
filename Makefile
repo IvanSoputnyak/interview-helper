@@ -9,7 +9,7 @@ SWIFT   ?= swift
 SWIFT_PKG := macos-native
 APP_NAME := InterviewHelperMac
 
-.PHONY: all help install test start dev mac-native mac-app mac-app-debug mac-icon swift-build package-mac clean distclean env
+.PHONY: all help install test start dev contract mac-native mac-app mac-app-debug mac-icon swift-build package-mac clean distclean env
 
 # Local setup + builds: env file, deps, Swift debug build (does not launch the GUI app).
 all: env install swift-build
@@ -24,6 +24,7 @@ help:
 	@echo "  make test          Run Node API + Swift unit tests"
 	@echo "  make start         Run backend server (foreground)"
 	@echo "  make dev           Run backend with nodemon reload"
+	@echo "  make contract      Regenerate Swift prompts/schema from shared/analysis-contract.json"
 	@echo "  make mac-native    swift run (fast; Screen Recording may attach to Cursor/Terminal — avoid if you want app-only permission)"
 	@echo "  make mac-app       Release .app + open (InterviewHelperMac in Privacy settings)"
 	@echo "  make mac-app-debug Debug .app + open (same; use Run and Debug in Cursor + CodeLLDB to debug that binary)"
@@ -50,6 +51,9 @@ start:
 
 dev:
 	$(NPM) run dev
+
+contract:
+	$(NPM) run -s contract
 
 mac-native:
 	$(NPM) run mac:native

@@ -12,6 +12,7 @@ const qaListEl = document.getElementById("qaList");
 const improveBtn = document.getElementById("improveBtn");
 const improveStatusEl = document.getElementById("improveStatus");
 const params = new URLSearchParams(window.location.search);
+let shownAnalysisId = null;
 const viewerToken = params.get("token");
 
 if (!viewerToken) {
@@ -19,6 +20,7 @@ if (!viewerToken) {
 }
 
 function renderAnalysis(data) {
+  shownAnalysisId = data.id || null;
   updatedAtEl.textContent = data.createdAt || "-";
   contentTypeEl.textContent = data.detectedContentType || "unknown";
   summaryEl.textContent = data.summary || "No summary";
@@ -37,8 +39,8 @@ function renderQA(items) {
     return;
   }
 
+  // Every row the server keeps (capped there by HISTORY_MAX_ITEMS).
   qaListEl.textContent = items
-    .slice(0, 15)
     .map((row, index) => `${index + 1}. Q: ${row.q || "—"}\nA: ${row.a || "—"}`)
     .join("\n\n");
 }
@@ -58,8 +60,12 @@ async function improveSolution() {
     if (!response.ok) {
       throw new Error(payload.error || "Improve failed.");
     }
-    renderAnalysis(payload);
-    improveStatusEl.textContent = "Improved.";
+    // A newer capture may have replaced the one being improved; the server pushes the live view over the socket.
+    const stillShown = payload.id === shownAnalysisId;
+    if (stillShown) {
+      renderAnalysis(payload);
+    }
+    improveStatusEl.textContent = stillShown ? "Improved." : "Improved (a newer capture is shown).";
   } catch (error) {
     improveStatusEl.textContent = `Error: ${error.message}`;
   } finally {
