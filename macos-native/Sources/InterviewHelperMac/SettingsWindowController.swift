@@ -56,7 +56,7 @@ final class SettingsWindowController: NSWindowController {
                 try KeychainStore.saveAPIKey(key)
             }
             ModelSettings.save(model: modelField.stringValue, reasoningEffort: selectedEffort())
-            QAStore.saveMaxItems(historySizeField.integerValue)
+            QAStore.saveMaxItems(QAStore.maxItems(fromFieldText: historySizeField.stringValue))
             window?.close()
         } catch {
             NSAlert.show(title: "Could not save", message: error.localizedDescription)
@@ -88,7 +88,6 @@ final class SettingsWindowController: NSWindowController {
 
         let historyLabel = label("History size (Q&A rows kept, \(QAStore.minItems)–\(QAStore.maxItemsLimit))")
         historySizeField.translatesAutoresizingMaskIntoConstraints = false
-        historySizeField.formatter = Self.historySizeFormatter()
         historySizeField.placeholderString = "\(QAStore.defaultMaxItems)"
 
         let hint = label("Your key stays in the Mac Keychain. Screenshots are sent only to OpenAI.")
@@ -141,15 +140,6 @@ final class SettingsWindowController: NSWindowController {
         historySizeField.integerValue = QAStore.maxItems
     }
 
-    /// Whole numbers within the allowed range only; out-of-range input is rejected while typing.
-    private static func historySizeFormatter() -> NumberFormatter {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .none
-        formatter.allowsFloats = false
-        formatter.minimum = NSNumber(value: QAStore.minItems)
-        formatter.maximum = NSNumber(value: QAStore.maxItemsLimit)
-        return formatter
-    }
 
     private func selectedEffort() -> ReasoningEffort? {
         Self.effort(atPopupIndex: effortPopup.indexOfSelectedItem)

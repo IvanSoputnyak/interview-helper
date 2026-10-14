@@ -39,8 +39,8 @@ function renderQA(items) {
     return;
   }
 
+  // Every row the server keeps (capped there by HISTORY_MAX_ITEMS).
   qaListEl.textContent = items
-    .slice(0, 15)
     .map((row, index) => `${index + 1}. Q: ${row.q || "—"}\nA: ${row.a || "—"}`)
     .join("\n\n");
 }

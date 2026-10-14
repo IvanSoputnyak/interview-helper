@@ -4,8 +4,6 @@ import InterviewHelperCore
 /// Renders `ResultsViewState` (which holds the rules) and runs the model requests it allows.
 @MainActor
 final class ResultsWindowController: NSWindowController, NSWindowDelegate {
-    private static let historyDisplayLimit = 15
-
     private enum ScrollTarget {
         case top
         case explanation
@@ -60,7 +58,8 @@ final class ResultsWindowController: NSWindowController, NSWindowDelegate {
         if rows.isEmpty {
             textView.string = "No saved Q&A yet.\n\nCapture with ⌥⇧S from the menu bar."
         } else {
-            let saved = rows.prefix(Self.historyDisplayLimit).enumerated().map { index, row in
+            // Every kept row: QAStore.list() is already capped at the History size setting.
+            let saved = rows.enumerated().map { index, row in
                 "\(index + 1). Q: \(row.q)\nA: \(row.a)"
             }.joined(separator: "\n\n———\n\n")
             textView.string = "Saved Q&A\n\n\(saved)"

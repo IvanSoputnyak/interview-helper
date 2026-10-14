@@ -60,6 +60,34 @@ struct HistorySizeTests {
         #expect(defaults.integer(forKey: QAStore.maxItemsDefaultsKey) == QAStore.maxItemsLimit)
     }
 
+    @Test(arguments: ["", "   ", "abc", "1.5", "0", "-3"])
+    func test_maxItemsFromFieldText_whenBlankOrInvalid_returnsDefaultNotOne(text: String) {
+        #expect(QAStore.maxItems(fromFieldText: text) == QAStore.defaultMaxItems)
+    }
+
+    @Test func test_maxItemsFromFieldText_whenValidNumber_returnsIt() {
+        #expect(QAStore.maxItems(fromFieldText: "100") == 100)
+    }
+
+    @Test func test_maxItemsFromFieldText_whenPaddedNumber_returnsTrimmedValue() {
+        #expect(QAStore.maxItems(fromFieldText: " 42 \n") == 42)
+    }
+
+    @Test func test_maxItemsFromFieldText_whenMinimum_returnsMinimum() {
+        #expect(QAStore.maxItems(fromFieldText: "1") == QAStore.minItems)
+    }
+
+    @Test func test_maxItemsFromFieldText_whenAboveLimit_returnsLimit() {
+        #expect(QAStore.maxItems(fromFieldText: "9999") == QAStore.maxItemsLimit)
+    }
+
+    @Test func test_savingBlankField_keepsDefaultInsteadOfShrinkingHistory() {
+        let defaults = makeDefaults()
+        defaults.set(100, forKey: QAStore.maxItemsDefaultsKey)
+        QAStore.saveMaxItems(QAStore.maxItems(fromFieldText: ""), to: defaults)
+        #expect(QAStore.maxItems(from: defaults) == QAStore.defaultMaxItems)
+    }
+
     @Test(arguments: [1, 26, 500])
     func test_saveThenLoad_withValidSize_roundTrips(size: Int) {
         let defaults = makeDefaults()

@@ -20,6 +20,15 @@ public enum QAStore {
         return stored > 0 ? min(stored, maxItemsLimit) : defaultMaxItems
     }
 
+    /// History size typed into Settings: blank, non-numeric, or below `minItems` means the default
+    /// (never 1, which would wipe history on the next capture); above `maxItemsLimit` is capped.
+    public static func maxItems(fromFieldText text: String) -> Int {
+        guard let typed = Int(text.trimmingCharacters(in: .whitespacesAndNewlines)), typed >= minItems else {
+            return defaultMaxItems
+        }
+        return min(typed, maxItemsLimit)
+    }
+
     /// Clamps to `minItems...maxItemsLimit`; the default is not stored, so a future default change reaches everyone.
     public static func saveMaxItems(_ count: Int, to defaults: UserDefaults = .standard) {
         let clamped = min(max(count, minItems), maxItemsLimit)
