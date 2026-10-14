@@ -12,6 +12,8 @@ final class SettingsWindowController: NSWindowController {
     private let apiKeyField = NSSecureTextField()
     private let modelField = NSTextField()
     private let effortPopup = NSPopUpButton()
+    private let historySizeField = NSTextField()
+    private static let historySizeFieldWidth: CGFloat = 80
     private static let defaultEffortTitle = "Default (model decides)"
     private static let contentWidth: CGFloat = 440
 
@@ -54,6 +56,7 @@ final class SettingsWindowController: NSWindowController {
                 try KeychainStore.saveAPIKey(key)
             }
             ModelSettings.save(model: modelField.stringValue, reasoningEffort: selectedEffort())
+            QAStore.saveMaxItems(historySizeField.integerValue)
             window?.close()
         } catch {
             NSAlert.show(title: "Could not save", message: error.localizedDescription)
@@ -83,6 +86,11 @@ final class SettingsWindowController: NSWindowController {
         effortPopup.translatesAutoresizingMaskIntoConstraints = false
         effortPopup.addItems(withTitles: [Self.defaultEffortTitle] + ReasoningEffort.allCases.map { $0.rawValue.capitalized })
 
+        let historyLabel = label("History size (Q&A rows kept, \(QAStore.minItems)–\(QAStore.maxItemsLimit))")
+        historySizeField.translatesAutoresizingMaskIntoConstraints = false
+        historySizeField.formatter = Self.historySizeFormatter()
+        historySizeField.placeholderString = "\(QAStore.defaultMaxItems)"
+
         let hint = label("Your key stays in the Mac Keychain. Screenshots are sent only to OpenAI.")
         hint.font = NSFont.systemFont(ofSize: 11)
         hint.textColor = .secondaryLabelColor
@@ -92,7 +100,7 @@ final class SettingsWindowController: NSWindowController {
         saveButton.keyEquivalent = "\r"
         saveButton.translatesAutoresizingMaskIntoConstraints = false
 
-        for view in [keyLabel, apiKeyField, modelLabel, modelField, effortLabel, effortPopup, hint, saveButton] {
+        for view in [keyLabel, apiKeyField, modelLabel, modelField, effortLabel, effortPopup, historyLabel, historySizeField, hint, saveButton] {
             content.addSubview(view)
         }
 
@@ -113,7 +121,12 @@ final class SettingsWindowController: NSWindowController {
             effortLabel.topAnchor.constraint(equalTo: modelField.bottomAnchor, constant: 12),
             effortPopup.leadingAnchor.constraint(equalTo: keyLabel.leadingAnchor),
             effortPopup.topAnchor.constraint(equalTo: effortLabel.bottomAnchor, constant: 6),
-            hint.topAnchor.constraint(equalTo: effortPopup.bottomAnchor, constant: 10),
+            historyLabel.leadingAnchor.constraint(equalTo: keyLabel.leadingAnchor),
+            historyLabel.topAnchor.constraint(equalTo: effortPopup.bottomAnchor, constant: 12),
+            historySizeField.leadingAnchor.constraint(equalTo: keyLabel.leadingAnchor),
+            historySizeField.widthAnchor.constraint(equalToConstant: Self.historySizeFieldWidth),
+            historySizeField.topAnchor.constraint(equalTo: historyLabel.bottomAnchor, constant: 6),
+            hint.topAnchor.constraint(equalTo: historySizeField.bottomAnchor, constant: 10),
             saveButton.topAnchor.constraint(equalTo: hint.bottomAnchor, constant: 14),
             saveButton.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -pad),
             saveButton.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -pad),
@@ -125,6 +138,17 @@ final class SettingsWindowController: NSWindowController {
         let settings = ModelSettings.load()
         modelField.stringValue = settings.model
         effortPopup.selectItem(at: Self.popupIndex(for: settings.reasoningEffort))
+        historySizeField.integerValue = QAStore.maxItems
+    }
+
+    /// Whole numbers within the allowed range only; out-of-range input is rejected while typing.
+    private static func historySizeFormatter() -> NumberFormatter {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .none
+        formatter.allowsFloats = false
+        formatter.minimum = NSNumber(value: QAStore.minItems)
+        formatter.maximum = NSNumber(value: QAStore.maxItemsLimit)
+        return formatter
     }
 
     private func selectedEffort() -> ReasoningEffort? {

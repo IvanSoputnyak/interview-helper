@@ -4,12 +4,30 @@ import os
 public enum QAStore {
     public static let maxItemsDefaultsKey = "IH.qaMaxItems"
     public static let defaultMaxItems = 25
-    private static let maxItemsCap = 500
+    /// Allowed range for the "History size" setting.
+    public static let minItems = 1
+    public static let maxItemsLimit = 500
     private static let log = Logger(subsystem: KeychainStore.service, category: "QAStore")
 
+    /// How many Q&A rows are kept; lowering it hides older rows now and drops them from disk on the next write.
     public static var maxItems: Int {
-        let n = UserDefaults.standard.integer(forKey: maxItemsDefaultsKey)
-        return n > 0 ? min(n, maxItemsCap) : defaultMaxItems
+        maxItems(from: .standard)
+    }
+
+    /// Stored size, or the default when unset / not positive; never above `maxItemsLimit`.
+    public static func maxItems(from defaults: UserDefaults) -> Int {
+        let stored = defaults.integer(forKey: maxItemsDefaultsKey)
+        return stored > 0 ? min(stored, maxItemsLimit) : defaultMaxItems
+    }
+
+    /// Clamps to `minItems...maxItemsLimit`; the default is not stored, so a future default change reaches everyone.
+    public static func saveMaxItems(_ count: Int, to defaults: UserDefaults = .standard) {
+        let clamped = min(max(count, minItems), maxItemsLimit)
+        if clamped == defaultMaxItems {
+            defaults.removeObject(forKey: maxItemsDefaultsKey)
+        } else {
+            defaults.set(clamped, forKey: maxItemsDefaultsKey)
+        }
     }
 
     public static var fileURL: URL {
