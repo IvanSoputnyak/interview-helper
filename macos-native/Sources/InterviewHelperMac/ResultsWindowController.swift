@@ -41,7 +41,7 @@ final class ResultsWindowController: NSWindowController, NSWindowDelegate {
     func showAnalysis(_ analysis: ScreenAnalysis) {
         state.show(analysis)
         render(scrollTo: .top)
-        present()
+        bringToFront()
     }
 
     /// Latest analysis if there is one this session, otherwise saved history.
@@ -67,7 +67,7 @@ final class ResultsWindowController: NSWindowController, NSWindowDelegate {
         // "Show results" returns to the latest analysis.
         state.showHistory()
         updateButtons()
-        present()
+        bringToFront()
     }
 
     @objc private func toggleSolution() {
@@ -117,10 +117,7 @@ final class ResultsWindowController: NSWindowController, NSWindowDelegate {
         request: @escaping @MainActor (ModelSettings, String, @escaping RetryObserver) async throws -> Void
     ) {
         guard state.canStartRequest else { return }
-        guard let apiKey = KeychainStore.loadAPIKey(), !apiKey.isEmpty else {
-            NSAlert.show(title: "API key required", message: "Add your OpenAI API key in Settings.")
-            return
-        }
+        guard let apiKey = APIKeyGate.require() else { return }
         let settings = ModelSettings.load()
         state.begin(action)
         updateButtons()
@@ -130,9 +127,9 @@ final class ResultsWindowController: NSWindowController, NSWindowDelegate {
                 updateButtons()
             }
             do {
-                try await request(settings, apiKey) { [weak self] event in
-                    self?.state.noteRetry(event)
-                    self?.updateButtons()
+                try await request(settings, apiKey) { event in
+                    self.state.noteRetry(event)
+                    self.updateButtons()
                 }
             } catch {
                 NSAlert.show(title: action.failureTitle, message: error.localizedDescription)
@@ -165,12 +162,6 @@ final class ResultsWindowController: NSWindowController, NSWindowDelegate {
         let glyphs = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
         let headingRect = layoutManager.boundingRect(forGlyphRange: glyphs, in: container)
         textView.scroll(NSPoint(x: 0, y: headingRect.minY + textView.textContainerOrigin.y))
-    }
-
-    private func present() {
-        showWindow(nil)
-        window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func updateButtons() {
@@ -222,15 +213,5 @@ final class ResultsWindowController: NSWindowController, NSWindowDelegate {
             explainButton.trailingAnchor.constraint(equalTo: improveButton.leadingAnchor, constant: -8),
             explainButton.centerYAnchor.constraint(equalTo: improveButton.centerYAnchor),
         ])
-    }
-}
-
-extension NSAlert {
-    static func show(title: String, message: String) {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = title
-        alert.informativeText = message
-        alert.runModal()
     }
 }

@@ -11,6 +11,7 @@
     "- If it is not a coding problem, set detectedContentType accordingly, answer briefly in summary, and leave fields that do not apply empty.",
     "- Use few, simple words."
   ],
+  "userQuestionInstructions": "The person viewing this screen also asks the question below. Answer it plainly in summary (a few sentences are fine) and still fill the other fields for the coding problem on screen.",
   "improveSystemPrompt": "You are a senior technical interviewer reviewing a candidate's solution for correctness, edge cases, and complexity. Be concise and use simple words.",
   "improveInstructions": [
     "Review this interview solution.",

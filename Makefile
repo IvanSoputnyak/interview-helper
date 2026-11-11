@@ -31,7 +31,7 @@ help:
 	@echo "  make swift-build   Debug-build the Swift package"
 	@echo "  make mac-icon      Rebuild AppIcon.icns from macos-native/Resources/AppIcon-1024.png"
 	@echo "  make package-mac   Release-build + dist/$(APP_NAME).app"
-	@echo "  make clean         Remove dist/ and Swift .build/"
+	@echo "  make clean         Remove dist/ and Swift build output"
 	@echo "  make distclean     clean + remove node_modules/"
 	@echo ""
 
@@ -43,8 +43,7 @@ env:
 	@echo ".env ready (edit OPENAI_API_KEY and VIEWER_TOKEN)"
 
 test:
-	$(NPM) run test:node
-	$(SWIFT) test --package-path $(SWIFT_PKG)
+	$(NPM) test
 
 start:
 	$(NPM) start
@@ -76,7 +75,7 @@ package-mac:
 	$(NPM) run package:mac
 
 clean:
-	rm -rf dist "$(SWIFT_PKG)/.build"
+	rm -rf dist "$(SWIFT_PKG)/.build" "$(HOME)/Library/Caches/InterviewHelper/swift-test"
 
 distclean: clean
 	rm -rf node_modules

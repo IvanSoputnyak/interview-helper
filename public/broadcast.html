@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Interview Helper - Share screen</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <h1>Share this screen</h1>
+      <p class="muted">
+        Sends this screen to the viewer on your phone or tablet about once a second, so you can watch it there and
+        tap <strong>Capture &amp; analyze</strong>. Nothing leaves this Wi‑Fi except the frame you analyze (sent to OpenAI).
+      </p>
+      <div class="card">
+        <button id="shareBtn" class="primary">Start sharing</button>
+        <div id="shareStatus" class="muted">Not sharing.</div>
+        <div id="connectionStatus" class="connection-status">Connecting…</div>
+      </div>
+      <p class="muted">
+        Keep this tab open in its own window while sharing. Browsers slow down hidden tabs; if the phone shows the
+        picture freezing, bring this window back on screen.
+      </p>
+    </main>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/broadcast.js"></script>
+  </body>
+</html>

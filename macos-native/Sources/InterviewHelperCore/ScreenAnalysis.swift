@@ -1,6 +1,6 @@
 import Foundation
 
-public struct ScreenAnalysis: Codable, Sendable, Equatable {
+public struct ScreenAnalysis: Sendable, Equatable {
     public var id: String
     public var createdAt: String
     public var summary: String
@@ -42,7 +42,6 @@ public struct ScreenAnalysis: Codable, Sendable, Equatable {
     public static func fromParsedJSON(_ parsed: [String: String], id: String? = nil) -> ScreenAnalysis {
         ScreenAnalysis(
             id: id ?? UUID().uuidString,
-            createdAt: ISO8601DateFormatter().string(from: Date()),
             summary: parsed["summary"] ?? "No summary",
             question: nonEmpty(parsed["question"]) ?? parsed["summary"] ?? "",
             solution: parsed["solution"] ?? "",
@@ -60,11 +59,16 @@ public struct ScreenAnalysis: Codable, Sendable, Equatable {
         return value
     }
 
-    /// Field value by schema key; `question` falls back to `summary` like `QARecord.from`.
+    /// The question, or the summary when the model left the question empty.
+    public var displayQuestion: String {
+        question.isEmpty ? summary : question
+    }
+
+    /// Field value by schema key; `question` is `displayQuestion`.
     func value(forKey key: String) -> String {
         switch key {
         case "summary": return summary
-        case "question": return question.isEmpty ? summary : question
+        case "question": return displayQuestion
         case "solution": return solution
         case "codeSnippet": return codeSnippet
         case "explanation": return explanation
@@ -118,7 +122,7 @@ public struct QARecord: Codable, Sendable, Equatable {
         QARecord(
             id: analysis.id,
             at: analysis.createdAt,
-            q: String((analysis.question.isEmpty ? analysis.summary : analysis.question).prefix(questionMaxChars)),
+            q: String(analysis.displayQuestion.prefix(questionMaxChars)),
             a: String((analysis.codeSnippet.isEmpty ? analysis.solution : analysis.codeSnippet).prefix(answerMaxChars))
         )
     }

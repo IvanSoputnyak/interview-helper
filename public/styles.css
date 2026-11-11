@@ -21,22 +21,39 @@ h1 {
   margin: 16px 0;
 }
 
-textarea {
-  width: 100%;
-  min-height: 90px;
-  margin-top: 8px;
-}
-
 button {
   margin-top: 12px;
-  padding: 8px 14px;
+  padding: 10px 16px;
+  font-size: 16px;
   cursor: pointer;
 }
 
-img.preview {
+button.primary {
   width: 100%;
-  max-height: 300px;
-  object-fit: contain;
+  font-weight: bold;
+}
+
+input[type="text"] {
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px;
+  /* 16px keeps iOS Safari from zooming in when the field is focused. */
+  font-size: 16px;
+}
+
+.connection-status {
+  margin: 8px 0;
+  font-weight: bold;
+}
+
+.connection-status.offline {
+  color: #b00020;
+}
+
+.live-screen {
+  display: block;
+  width: 100%;
   border: 1px solid #ddd;
   border-radius: 6px;
 }

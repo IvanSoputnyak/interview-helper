@@ -8,6 +8,8 @@ public enum QAStore {
     public static let minItems = 1
     public static let maxItemsLimit = 500
     private static let log = Logger(subsystem: KeychainStore.service, category: "QAStore")
+    /// Serial: file reads/rewrites stay off the main thread, in call order (a capture's append before its improve's upsert).
+    private static let queue = DispatchQueue(label: "\(KeychainStore.service).qa-store")
 
     /// How many Q&A rows are kept; lowering it hides older rows now and drops them from disk on the next write.
     public static var maxItems: Int {
@@ -49,29 +51,43 @@ public enum QAStore {
             .appendingPathComponent("qa.jsonl")
     }
 
+    /// Waits for pending saves, so it always reflects every earlier `append` / `upsert`.
     public static func list() -> [QARecord] {
-        Array(readAll().prefix(maxItems))
+        let url = fileURL, limit = maxItems
+        return queue.sync { Array(readAll(url).prefix(limit)) }
     }
 
+    /// Blocks until pending saves are on disk (call before the app quits).
+    public static func flush() {
+        queue.sync {}
+    }
+
+    /// Saved in the background; returns immediately.
     public static func append(_ entry: QARecord) {
-        var items = readAll()
-        items.insert(entry, at: 0)
-        writeAll(Array(items.prefix(maxItems)))
+        let url = fileURL, limit = maxItems
+        queue.async {
+            writeAll(Array(([entry] + readAll(url)).prefix(limit)), to: url)
+        }
     }
 
+    /// Replaces the row with the same id in place (or adds it at the top); saved in the background.
     public static func upsert(_ entry: QARecord) {
-        var items = readAll()
-        if let index = items.firstIndex(where: { $0.id == entry.id }) {
-            items[index] = entry
-        } else {
-            items.insert(entry, at: 0)
+        let url = fileURL, limit = maxItems
+        queue.async {
+            var items = readAll(url)
+            if let index = items.firstIndex(where: { $0.id == entry.id }) {
+                items[index] = entry
+            } else {
+                items.insert(entry, at: 0)
+            }
+            writeAll(Array(items.prefix(limit)), to: url)
         }
-        writeAll(Array(items.prefix(maxItems)))
     }
 
     /// Corrupt lines are skipped so one bad row never wipes the rest of the history.
-    private static func readAll() -> [QARecord] {
-        guard let data = try? Data(contentsOf: fileURL), !data.isEmpty else {
+    /// `url` is resolved by the caller at call time, so a queued save never lands in a different file.
+    private static func readAll(_ url: URL) -> [QARecord] {
+        guard let data = try? Data(contentsOf: url), !data.isEmpty else {
             return []
         }
         let decoder = JSONDecoder()
@@ -79,8 +95,7 @@ public enum QAStore {
         return lines.compactMap { try? decoder.decode(QARecord.self, from: Data($0.utf8)) }
     }
 
-    private static func writeAll(_ items: [QARecord]) {
-        let url = fileURL
+    private static func writeAll(_ items: [QARecord], to url: URL) {
         let encoder = JSONEncoder()
         let body = items.compactMap { try? String(decoding: encoder.encode($0), as: UTF8.self) }.joined(separator: "\n")
         do {

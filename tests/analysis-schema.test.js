@@ -7,6 +7,8 @@ const {
   ANALYSIS_KEYS,
   DEFAULT_MODEL,
   analysisJsonSchema,
+  buildAnalyzePrompt,
+  buildExplainPrompt,
   buildImprovePrompt,
   pickAnalysisFields,
   resolveModel,
@@ -149,4 +151,27 @@ test("stripCodeFences keeps fences that appear inside the code", () => {
 
 test("stripCodeFences returns empty input unchanged", () => {
   assert.equal(stripCodeFences(""), "");
+});
+
+test("buildExplainPrompt starts with the contract explain instructions", () => {
+  const prompt = buildExplainPrompt({ question: "Q" });
+  assert.ok(prompt.startsWith(contract.explainInstructions.join("\n")));
+});
+
+test("buildExplainPrompt includes the current code", () => {
+  const prompt = buildExplainPrompt({ question: "Q", codeSnippet: "return 1" });
+  assert.match(prompt, /^Current codeSnippet: return 1$/m);
+});
+
+test("buildAnalyzePrompt without a question returns the base prompt unchanged", () => {
+  assert.equal(buildAnalyzePrompt("Solve it.", undefined), "Solve it.");
+});
+
+test("buildAnalyzePrompt with a blank question returns the base prompt unchanged", () => {
+  assert.equal(buildAnalyzePrompt("Solve it.", "   "), "Solve it.");
+});
+
+test("buildAnalyzePrompt with a question appends the instructions and the trimmed question", () => {
+  const prompt = buildAnalyzePrompt("Solve it.", "  why O(n)?  ");
+  assert.equal(prompt, `Solve it.\n\n${contract.userQuestionInstructions}\nQuestion: why O(n)?`);
 });

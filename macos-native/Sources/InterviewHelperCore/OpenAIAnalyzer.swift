@@ -163,7 +163,8 @@ public enum OpenAIAnalyzer {
                 ],
             ]
         }
-        return try JSONSerialization.data(withJSONObject: payload)
+        // The screenshot's base64 is full of "/"; escaping each as "\/" only bloats the upload.
+        return try JSONSerialization.data(withJSONObject: payload, options: .withoutEscapingSlashes)
     }
 
     /// Transient network / HTTP failures are retried (see `RetryPolicy`); returns the raw body of the successful response.

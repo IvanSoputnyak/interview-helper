@@ -48,15 +48,13 @@ private enum Timing {
 }
 
 @MainActor
-final class AppController: NSObject, NSApplicationDelegate {
+final class AppController: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private static let log = Logger(subsystem: KeychainStore.service, category: "App")
     /// Shown in the terminal when the binary is run directly (e.g. `make mac-native`); launches via Finder/`open` discard stderr.
     private static let terminalLaunchHint = "Interview Helper is running: look for \"IH\" in the menu bar (top right). Press ⌥⇧S to capture.\n"
 
     private var statusItem: NSStatusItem?
     private var captureItem: NSMenuItem?
-    private var promptUnlockMenuItem: NSMenuItem?
-    private var editPromptMenuItem: NSMenuItem?
     private var statusTextItem: NSMenuItem?
     private var hotKeyRef: EventHotKeyRef?
     private var hotKeyHandlerRef: EventHandlerRef?
@@ -84,14 +82,14 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         statusResetTask?.cancel()
+        QAStore.flush()
         if let hotKeyRef { UnregisterEventHotKey(hotKeyRef) }
         if let hotKeyHandlerRef { RemoveEventHandler(hotKeyHandlerRef) }
     }
 
     @objc private func onCaptureAnalyze() {
         if isCapturing { return }
-        guard let apiKey = KeychainStore.loadAPIKey(), !apiKey.isEmpty else {
-            NSAlert.show(title: "API key required", message: "Add your OpenAI API key in Settings.")
+        guard let apiKey = APIKeyGate.require() else {
             onOpenSettings()
             return
         }
@@ -102,16 +100,12 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
 
         isCapturing = true
-        setCaptureEnabled(false)
         updateStatus("Capturing...")
         let settings = ModelSettings.load()
         let prompt = effectiveAnalyzePrompt()
 
         Task { @MainActor in
-            defer {
-                isCapturing = false
-                setCaptureEnabled(true)
-            }
+            defer { isCapturing = false }
             let pngData: Data
             do {
                 pngData = try await ScreenCapture.captureDisplayUnderCursor()
@@ -129,7 +123,7 @@ final class AppController: NSObject, NSApplicationDelegate {
                     apiKey: apiKey,
                     model: settings.model,
                     reasoningEffort: settings.reasoningEffort,
-                    onRetry: { [weak self] event in self?.updateStatus(event.displayText) }
+                    onRetry: { event in self.updateStatus(event.displayText) }
                 )
                 QAStore.append(QARecord.from(analysis))
                 resultsWindow.showAnalysis(analysis)
@@ -164,24 +158,40 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 
     @objc private func togglePromptUnlock() {
-        let ud = UserDefaults.standard
-        let newValue = !ud.bool(forKey: UDKeys.promptUnlockEnabled)
-        ud.set(newValue, forKey: UDKeys.promptUnlockEnabled)
-        promptUnlockMenuItem?.state = newValue ? .on : .off
-        editPromptMenuItem?.isEnabled = newValue
-        if !newValue { promptEditorWindow.close() }
+        isPromptUnlocked.toggle()
+        if !isPromptUnlocked { promptEditorWindow.close() }
     }
 
     @objc private func openPromptEditor() {
-        guard UserDefaults.standard.bool(forKey: UDKeys.promptUnlockEnabled) else { return }
+        guard isPromptUnlocked else { return }
         promptEditorWindow.present()
+    }
+
+    private var isPromptUnlocked: Bool {
+        get { UserDefaults.standard.bool(forKey: UDKeys.promptUnlockEnabled) }
+        set { UserDefaults.standard.set(newValue, forKey: UDKeys.promptUnlockEnabled) }
     }
 
     private func effectiveAnalyzePrompt() -> String {
         AnalyzePrompt.effective(
-            unlockEnabled: UserDefaults.standard.bool(forKey: UDKeys.promptUnlockEnabled),
+            unlockEnabled: isPromptUnlocked,
             customPrompt: UserDefaults.standard.string(forKey: UDKeys.customPromptText)
         )
+    }
+
+    /// Menu items are auto-enabled, so their enabled/checked state is decided here each time the menu opens.
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(onCaptureAnalyze):
+            return !isCapturing
+        case #selector(togglePromptUnlock):
+            menuItem.state = isPromptUnlocked ? .on : .off
+            return true
+        case #selector(openPromptEditor):
+            return isPromptUnlocked
+        default:
+            return true
+        }
     }
 
     private func setupMenuBar() {
@@ -192,51 +202,19 @@ final class AppController: NSObject, NSApplicationDelegate {
         item.button?.imagePosition = .imageOnly
 
         let menu = NSMenu()
-        menu.addItem(disabled: "Interview Helper")
-        let capture = NSMenuItem(title: "Capture & Analyze (⌥⇧S)", action: #selector(onCaptureAnalyze), keyEquivalent: "")
-        capture.target = self
-        menu.addItem(capture)
-        captureItem = capture
-
-        let results = NSMenuItem(title: "Show results", action: #selector(onShowResults), keyEquivalent: "r")
-        results.keyEquivalentModifierMask = .command
-        results.target = self
-        menu.addItem(results)
-
-        let history = NSMenuItem(title: "Show history", action: #selector(onShowHistory), keyEquivalent: "")
-        history.target = self
-        menu.addItem(history)
-
-        let settings = NSMenuItem(title: "Settings…", action: #selector(onOpenSettings), keyEquivalent: ",")
-        settings.target = self
-        menu.addItem(settings)
-
-        menu.addItem(NSMenuItem.separator())
-        let unlock = NSMenuItem(title: "Customize prompt (advanced)", action: #selector(togglePromptUnlock), keyEquivalent: "")
-        unlock.target = self
-        unlock.state = UserDefaults.standard.bool(forKey: UDKeys.promptUnlockEnabled) ? .on : .off
-        promptUnlockMenuItem = unlock
-        menu.addItem(unlock)
-        let editPrompt = NSMenuItem(title: "Edit custom prompt…", action: #selector(openPromptEditor), keyEquivalent: "")
-        editPrompt.target = self
-        editPrompt.isEnabled = UserDefaults.standard.bool(forKey: UDKeys.promptUnlockEnabled)
-        editPromptMenuItem = editPrompt
-        menu.addItem(editPrompt)
-
-        menu.addItem(NSMenuItem.separator())
-        let screen = NSMenuItem(title: "Screen Recording settings…", action: #selector(onOpenScreenRecordingSettings), keyEquivalent: "")
-        screen.target = self
-        menu.addItem(screen)
-
-        let status = NSMenuItem(title: "Status · Idle", action: nil, keyEquivalent: "")
-        status.isEnabled = false
-        menu.addItem(status)
-        statusTextItem = status
-
-        menu.addItem(NSMenuItem.separator())
-        let quit = NSMenuItem(title: "Quit", action: #selector(onQuit), keyEquivalent: "q")
-        quit.target = self
-        menu.addItem(quit)
+        menu.addAction("Interview Helper")
+        captureItem = menu.addAction("Capture & Analyze (⌥⇧S)", #selector(onCaptureAnalyze), target: self)
+        menu.addAction("Show results", #selector(onShowResults), target: self, key: "r")
+        menu.addAction("Show history", #selector(onShowHistory), target: self)
+        menu.addAction("Settings…", #selector(onOpenSettings), target: self, key: ",")
+        menu.addItem(.separator())
+        menu.addAction("Customize prompt (advanced)", #selector(togglePromptUnlock), target: self)
+        menu.addAction("Edit custom prompt…", #selector(openPromptEditor), target: self)
+        menu.addItem(.separator())
+        menu.addAction("Screen Recording settings…", #selector(onOpenScreenRecordingSettings), target: self)
+        statusTextItem = menu.addAction("Status · Idle")
+        menu.addItem(.separator())
+        menu.addAction("Quit", #selector(onQuit), target: self, key: "q")
         item.menu = menu
     }
 
@@ -280,16 +258,12 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func setCaptureEnabled(_ enabled: Bool) { captureItem?.isEnabled = enabled }
-
     private func showPermissionAlert() {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "Screen Recording permission required"
-        alert.informativeText = "Enable Screen Recording for Interview Helper in System Settings, then try again."
-        alert.addButton(withTitle: "Open Settings")
-        alert.addButton(withTitle: "Cancel")
-        if alert.runModal() == .alertFirstButtonReturn {
+        if NSAlert.show(
+            title: "Screen Recording permission required",
+            message: "Enable Screen Recording for Interview Helper in System Settings, then try again.",
+            buttons: ["Open Settings", "Cancel"]
+        ) {
             onOpenScreenRecordingSettings()
         }
     }
@@ -298,18 +272,10 @@ final class AppController: NSObject, NSApplicationDelegate {
         let ud = UserDefaults.standard
         guard !ud.bool(forKey: UDKeys.hasShownMenuBarHint) else { return }
         ud.set(true, forKey: UDKeys.hasShownMenuBarHint)
-        let alert = NSAlert()
-        alert.alertStyle = .informational
-        alert.messageText = "Interview Helper is running"
-        alert.informativeText = "Look for IH in the menu bar. Press ⌥⇧S to capture a coding question."
-        alert.runModal()
-    }
-}
-
-private extension NSMenu {
-    func addItem(disabled title: String) {
-        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-        item.isEnabled = false
-        addItem(item)
+        NSAlert.show(
+            title: "Interview Helper is running",
+            message: "Look for IH in the menu bar. Press ⌥⇧S to capture a coding question.",
+            style: .informational
+        )
     }
 }
