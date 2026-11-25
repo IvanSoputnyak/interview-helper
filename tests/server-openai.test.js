@@ -102,11 +102,12 @@ async function postJSON(route, payload = {}) {
 const analyzeScreen = (payload) => postJSON("/api/analyze-screen", payload);
 const explain = () => postJSON("/api/explain");
 
-/** Shares one frame from a broadcaster socket, as /broadcast does. */
+/** Shares one frame from a broadcaster socket, as /broadcast does; returns a function that stops sharing. */
 async function shareFrame(frame) {
   const client = createPollingClient(baseUrl);
   const { sid } = await client.connect({ token: "test-token" });
   await client.emitBinary(sid, "screen:frame", frame);
+  return () => client.emit(sid, "screen:stop");
 }
 
 /** Text parts of the user message of a captured model request. */
@@ -128,6 +129,8 @@ async function qaItems() {
 }
 
 test.before(async () => {
+  // Many tests make OpenAI fail on purpose; the server logs each failure (see "a failed request is logged").
+  test.mock.method(console, "error", () => {});
   await startFakeOpenAI();
   process.env.OPENAI_BASE_URL = `http://127.0.0.1:${fakeOpenAI.address().port}/v1`;
   process.env.OPENAI_API_KEY = "test-key";
@@ -191,6 +194,20 @@ test("analyze strips markdown fences from the returned code", async () => {
   replyWith(ANALYZE, analysisJSON({ question: "Two sum", codeSnippet: "```java\nreturn new int[0];\n```" }));
   const { body } = await analyze();
   assert.equal(body.codeSnippet, "return new int[0];");
+});
+
+test("analyze-screen after sharing stops answers 503 instead of analyzing the old frame", async () => {
+  const stopSharing = await shareFrame(Buffer.from([0xff, 0xd8, 3]));
+  await stopSharing();
+  const { status } = await analyzeScreen();
+  assert.equal(status, 503);
+});
+
+test("a failed request is logged on the server", async (t) => {
+  const logged = t.mock.method(console, "error", () => {});
+  replyWith(ANALYZE, "Invalid schema", { status: 400 });
+  await analyze();
+  assert.match(String(logged.mock.calls.at(-1)?.arguments[0]), /^Failed to analyze screenshot\. POST \/api\/analyze:$/);
 });
 
 test("analyze surfaces an OpenAI error as JSON 500", async () => {

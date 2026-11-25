@@ -65,21 +65,11 @@ const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   : null;
 
-let latestAnalysis = {
-  id: null,
-  createdAt: null,
-  summary: "No analysis yet.",
-  question: "",
-  solution: "",
-  codeSnippet: "",
-  explanation: "",
-  algorithmWhy: "",
-  timeComplexity: "",
-  spaceComplexity: "",
-  detectedContentType: "",
-};
-/** Latest JPEG frame of the shared screen, or null until /broadcast starts sharing. */
+let latestAnalysis = { id: null, createdAt: null, ...pickAnalysisFields({ summary: "No analysis yet." }) };
+/** Latest JPEG frame of the shared screen, or null while nothing is being shared. */
 let latestFrame = null;
+/** Socket that sent `latestFrame`; when it disconnects (share tab closed) the frame is dropped. */
+let frameSenderId = null;
 
 function tokenFromRequest(req) {
   return req.get("x-viewer-token") || req.query.token || null;
@@ -101,17 +91,15 @@ function requireViewerToken(req, res, next) {
   return next();
 }
 
+/** Every schema field as a string; `question` falls back to `summary` (matches ScreenAnalysis.fromParsedJSON). */
 function normalizeAnalysisShape(parsed) {
+  const fields = pickAnalysisFields(parsed);
   return {
-    summary: parsed.summary || "No summary",
-    question: parsed.question || parsed.summary || "",
-    solution: parsed.solution || "",
-    codeSnippet: stripCodeFences(parsed.codeSnippet || ""),
-    explanation: parsed.explanation || "",
-    algorithmWhy: parsed.algorithmWhy || "",
-    timeComplexity: parsed.timeComplexity || "",
-    spaceComplexity: parsed.spaceComplexity || "",
-    detectedContentType: parsed.detectedContentType || "unknown",
+    ...fields,
+    summary: fields.summary || "No summary",
+    question: fields.question || fields.summary,
+    codeSnippet: stripCodeFences(fields.codeSnippet),
+    detectedContentType: fields.detectedContentType || "unknown",
   };
 }
 
@@ -170,7 +158,21 @@ function receiveFrame(socket, frame) {
     return;
   }
   latestFrame = frame;
+  frameSenderId = socket.id;
   socket.broadcast.emit("screen:frame", frame);
+}
+
+/** Sharing ended: forget the frame so nothing analyzes or shows an old screen, and tell the viewers. */
+function clearFrame() {
+  latestFrame = null;
+  frameSenderId = null;
+  io.emit("screen:stop");
+}
+
+/** Port the server is bound to, or `fallback` before it listens. */
+function boundPort(fallback) {
+  const address = httpServer.address();
+  return typeof address === "object" && address ? address.port : fallback;
 }
 
 // Registered before express.static so these pages are never served without a token.
@@ -193,20 +195,28 @@ io.use((socket, next) => {
 io.on("connection", (socket) => {
   socket.emit("analysis:update", latestAnalysis);
   socket.emit("qa:list", qaStore.list());
+  // A viewer that slept through "screen:stop" still learns that sharing ended.
   if (latestFrame) {
     socket.emit("screen:frame", latestFrame);
+  } else {
+    socket.emit("screen:stop");
   }
   socket.on("screen:frame", (frame) => receiveFrame(socket, frame));
+  socket.on("screen:stop", clearFrame);
+  socket.on("disconnect", () => {
+    if (socket.id === frameSenderId) {
+      clearFrame();
+    }
+  });
 });
 
 app.get("/api/health", (_req, res) => {
-  const address = httpServer.address();
   res.json({
     ok: true,
     hasOpenAiKey: Boolean(openai),
     model: MODEL,
     viewerTokenConfigured: Boolean(process.env.VIEWER_TOKEN),
-    port: typeof address === "object" && address ? address.port : DEFAULT_PORT,
+    port: boundPort(DEFAULT_PORT),
   });
 });
 
@@ -224,6 +234,7 @@ function jsonRoute(failureMessage, handler) {
     try {
       await handler(req, res);
     } catch (error) {
+      console.error(`${failureMessage} ${req.method} ${req.path}:`, error);
       res.status(500).json({ error: failureMessage, details: error.message });
     }
   };
@@ -365,15 +376,7 @@ app.use((error, _req, res, next) => {
 function startListening(port = DEFAULT_PORT, host = "0.0.0.0") {
   return new Promise((resolve, reject) => {
     httpServer.once("error", reject);
-    httpServer.listen(port, host, () => {
-      const address = httpServer.address();
-      resolve({
-        port:
-          typeof address === "object" && address
-            ? address.port
-            : port,
-      });
-    });
+    httpServer.listen(port, host, () => resolve({ port: boundPort(port) }));
   });
 }
 

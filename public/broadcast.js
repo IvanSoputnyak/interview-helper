@@ -49,24 +49,33 @@ async function sendFrame() {
   }
 }
 
+/** Also tells the server (queued by socket.io if offline), so viewers stop seeing and analyzing the old screen. */
 function stopSharing() {
   clearInterval(frameTimer);
-  stream?.getTracks().forEach((track) => track.stop());
+  if (stream) {
+    stream.getTracks().forEach((track) => track.stop());
+    socket.emit("screen:stop");
+  }
   stream = null;
   shareBtn.textContent = "Start sharing";
   shareStatusEl.textContent = "Not sharing.";
 }
 
 async function startSharing() {
+  // Disabled while the picker is open, so a second click cannot start a second share.
+  shareBtn.disabled = true;
   try {
     stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    stream.getVideoTracks()[0].addEventListener("ended", stopSharing);
+    video.srcObject = stream;
+    await video.play();
   } catch (error) {
+    stopSharing();
     shareStatusEl.textContent = `Could not start sharing: ${error.message}`;
     return;
+  } finally {
+    shareBtn.disabled = false;
   }
-  stream.getVideoTracks()[0].addEventListener("ended", stopSharing);
-  video.srcObject = stream;
-  await video.play();
   frameTimer = setInterval(sendFrame, FRAME_INTERVAL_MS);
   shareBtn.textContent = "Stop sharing";
   shareStatusEl.textContent = "Sharing…";

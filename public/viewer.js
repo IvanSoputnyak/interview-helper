@@ -26,6 +26,7 @@ const STALE_FRAME_MS = 5000;
 const STALE_CHECK_INTERVAL_MS = 1000;
 /** A phone that slept or left the browser this long may hold a dead connection; reconnect at once. */
 const RECONNECT_AFTER_HIDDEN_MS = 5000;
+const SHARING_STOPPED_TEXT = "Sharing stopped on the Mac. Press Start sharing there to see the screen again.";
 let shownAnalysisId = null;
 let liveFrameUrl = null;
 let lastFrameAt = null;
@@ -75,6 +76,22 @@ function renderFrame(frame) {
   updateLiveStatus();
 }
 
+/** The Mac stopped sharing: drop the old picture so it is never mistaken for the current screen. */
+function clearFrame() {
+  // Nothing shown yet: keep the "Waiting for a shared screen" hint.
+  if (lastFrameAt === null) {
+    return;
+  }
+  if (liveFrameUrl) {
+    URL.revokeObjectURL(liveFrameUrl);
+  }
+  liveFrameUrl = null;
+  lastFrameAt = null;
+  liveScreenEl.hidden = true;
+  liveScreenEl.removeAttribute("src");
+  liveStatusEl.textContent = SHARING_STOPPED_TEXT;
+}
+
 /** "Live · time" while frames keep coming; otherwise says how long the picture has been frozen. */
 function updateLiveStatus() {
   if (lastFrameAt === null) {
@@ -86,7 +103,7 @@ function updateLiveStatus() {
     liveStatusEl.textContent = `Live · ${frameTime}`;
     return;
   }
-  const reason = socket && socket.connected ? "sharing on the Mac is paused or stopped" : "reconnecting";
+  const reason = socket && socket.connected ? "sharing on the Mac is paused" : "reconnecting";
   liveStatusEl.textContent = `No new frame for ${Math.round(ageMs / 1000)}s (${reason}) · last ${frameTime}`;
 }
 
@@ -213,6 +230,7 @@ function connect() {
   socket.on("analysis:update", renderAnalysis);
   socket.on("qa:list", renderQA);
   socket.on("screen:frame", renderFrame);
+  socket.on("screen:stop", clearFrame);
   socket.on("connect", () => showConnection("Connected", false));
   socket.on("disconnect", () => showConnection("Connection lost · reconnecting…", true));
   socket.on("connect_error", (error) => {

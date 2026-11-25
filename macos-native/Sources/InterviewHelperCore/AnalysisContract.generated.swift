@@ -15,9 +15,9 @@ enum AnalysisContract {
         "gpt-4.1-mini",
     ]
 
-    static let systemPrompt = "You are an expert competitive programmer and technical interviewer. You read coding problems from screenshots and return correct, efficient solutions. Be concise and use simple words."
+    static let systemPrompt = "You are an expert competitive programmer and technical interviewer. You read coding problems from screenshots of a whole screen and return correct, efficient solutions. Read only what is really on screen; never guess numbers or rules you cannot read. Be concise and use simple words."
 
-    static let defaultAnalyzePrompt = "Solve the coding interview problem in this screenshot.\n- Use the programming language and function signature shown on screen; if none is visible, use Python.\n- Give an efficient solution: optimal or near-optimal; brute force only if it is optimal; not over-engineered.\n- Respect the constraints shown (input sizes, value ranges) and handle edge cases.\n- If the problem is cut off or unclear, solve what is visible and say what is missing in summary.\n- If it is not a coding problem, set detectedContentType accordingly, answer briefly in summary, and leave fields that do not apply empty.\n- Use few, simple words."
+    static let defaultAnalyzePrompt = "Solve the coding interview problem in this screenshot.\n- The screenshot may show the whole screen. Use only the problem statement, its examples and constraints, and the code editor. Ignore browser tabs, menus, notifications, chat and other windows.\n- If several problems are visible, solve the one that is open or most prominent.\n- Use the programming language and the exact function or class signature shown in the editor; if none is visible, use Python.\n- Give an efficient solution: optimal or near-optimal; brute force only if it is optimal; not over-engineered.\n- Respect the constraints shown (input sizes, value ranges) and handle edge cases.\n- Before answering, run your code in your head on every example shown. If any result differs from the expected output, fix the code first.\n- If the problem is cut off or some text is unreadable, solve what is visible and say what is missing in summary.\n- If it is not a coding problem, set detectedContentType accordingly, answer briefly in summary, and leave fields that do not apply empty.\n- Use few, simple words."
 
     static let improveSystemPrompt = "You are a senior technical interviewer reviewing a candidate's solution for correctness, edge cases, and complexity. Be concise and use simple words."
 
@@ -42,12 +42,12 @@ enum AnalysisContract {
     static let fields = [
         AnalysisField(
             key: "summary",
-            description: "One line: the approach and its key idea. If the problem is cut off or unclear, say what is missing.",
+            description: "One line: the approach and its key idea. When the viewer asked a question, first answer it (a few sentences are fine). If the problem is cut off or unclear, say what is missing.",
             allowedValues: []
         ),
         AnalysisField(
             key: "question",
-            description: "The problem statement as read from the screen, including constraints and examples if visible.",
+            description: "The problem statement as read from the screen, including constraints and examples if visible. Copy numbers and names exactly.",
             allowedValues: []
         ),
         AnalysisField(
@@ -57,7 +57,7 @@ enum AnalysisContract {
         ),
         AnalysisField(
             key: "codeSnippet",
-            description: "Complete, runnable solution. Raw code only: no markdown fences and no prose around it.",
+            description: "Complete, runnable solution with any imports it needs, using the signature shown on screen. Raw code only: no markdown fences and no prose around it.",
             allowedValues: []
         ),
         AnalysisField(

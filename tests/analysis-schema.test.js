@@ -171,6 +171,10 @@ test("buildAnalyzePrompt with a blank question returns the base prompt unchanged
   assert.equal(buildAnalyzePrompt("Solve it.", "   "), "Solve it.");
 });
 
+test("buildAnalyzePrompt with a non-string question returns the base prompt unchanged", () => {
+  assert.equal(buildAnalyzePrompt("Solve it.", 5), "Solve it.");
+});
+
 test("buildAnalyzePrompt with a question appends the instructions and the trimmed question", () => {
   const prompt = buildAnalyzePrompt("Solve it.", "  why O(n)?  ");
   assert.equal(prompt, `Solve it.\n\n${contract.userQuestionInstructions}\nQuestion: why O(n)?`);

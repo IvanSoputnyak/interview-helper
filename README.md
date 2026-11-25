@@ -110,7 +110,7 @@ You don't need to reload anything; both pages recover on their own.
 
 - **Wi‑Fi drops or the server restarts**: the phone and the Mac share page show **Connection lost · reconnecting…** in red, keep trying every few seconds, and switch back to **Connected** by themselves. The phone then gets the latest answer, history and screen again, and the Mac keeps sharing (frames pause and resume; no need to press Start sharing again).
 - **Phone was locked or you switched apps**: when you come back after 5 seconds or more, the viewer reconnects at once, so the picture is current within a second or two.
-- **Frozen picture**: if no new frame arrives for 5 seconds, the line under the screen says **No new frame for …s** and why (reconnecting, or sharing on the Mac paused or stopped), so a frozen picture is never mistaken for live.
+- **Frozen picture**: if no new frame arrives for 5 seconds, the line under the screen says **No new frame for …s** and why (reconnecting, or sharing on the Mac paused), so a frozen picture is never mistaken for live.
 - **A button fails mid-request** (Capture & analyze, Improve, Explain simply): it's retried automatically up to 3 times (after 1, 2 and 4 seconds) and shows **Reconnecting (1/3)…**. If the phone is offline, it first shows **Waiting for connection…** and waits up to 30 seconds for the connection to return, then continues. Problems that retrying can't fix (wrong token, missing API key) are shown at once.
 - **OpenAI is busy or rate-limited**: the server retries OpenAI twice by itself before reporting an error.
 - **Not recovered automatically**: if the token changes (for example `VIEWER_TOKEN` was empty and the server restarted with a new random one), open the new link. Also, if you stop the share on the Mac, press **Start sharing** again: browsers require a click to share a screen.
@@ -121,6 +121,7 @@ You don't need to reload anything; both pages recover on their own.
 
 - The live picture only travels over your Wi‑Fi, from the Mac to the server (also on the Mac) to your phone.
 - Only the single frame you analyze goes to OpenAI, with your question.
+- When you press **Stop sharing** or close the share tab, the server forgets the last frame and the phone clears the picture, so an old screen is never shown or analyzed later.
 - Every page and request needs the token, so keep the viewer link private.
 
 ### Troubleshooting
@@ -131,7 +132,8 @@ You don't need to reload anything; both pages recover on their own.
 | "Invalid viewer token" | The token in the link doesn't match `VIEWER_TOKEN` in `.env` (or the server restarted with a new random token). Copy the link again from the server output. |
 | "Waiting for a shared screen…" on the phone | On the Mac, open the **share** link and press **Start sharing**. |
 | The share page says screen sharing isn't available | You opened the `.local` link on the Mac. Use the `http://localhost:3000/broadcast?token=…` link. |
-| "No new frame for …s (sharing on the Mac is paused or stopped)" | The share tab was hidden or minimized, or sharing was stopped. Bring its window back on screen (frames resume within a second), or press **Start sharing** again. |
+| "No new frame for …s (sharing on the Mac is paused)" | The share tab was hidden or minimized. Bring its window back on screen; frames resume within a second. |
+| "Sharing stopped on the Mac" | Sharing was stopped or the share tab was closed. Press **Start sharing** on the Mac again. |
 | "No new frame for …s (reconnecting)" or "Connection lost" that never clears | The server isn't running or the Wi‑Fi is down. Check the Terminal running `make start` and the phone's Wi‑Fi; the page reconnects by itself once it can. |
 | "No shared screen yet" when tapping Capture & analyze | Start sharing on the Mac first. (Right after a server restart the phone retries this for a few seconds while the Mac reconnects.) |
 | "OPENAI_API_KEY is missing." | Add the key to `.env` and restart the server (`Ctrl+C`, then `make start`). |

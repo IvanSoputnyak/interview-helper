@@ -44,10 +44,10 @@ test("socket with the viewer token is accepted", async () => {
   assert.ok(packets.some((packet) => packet.startsWith(SOCKET_CONNECT)));
 });
 
-// Runs before any frame is shared, so no screen:frame is expected yet.
-test("socket with the viewer token immediately receives the latest analysis and saved Q&A", async () => {
+// Runs before any frame is shared, so the viewer is told nothing is being shared.
+test("socket with the viewer token immediately receives the latest analysis, saved Q&A and screen:stop", async () => {
   const { packets } = await client.connect(AUTH);
-  assert.deepEqual(eventNames(packets), ["analysis:update", "qa:list"]);
+  assert.deepEqual(eventNames(packets), ["analysis:update", "qa:list", "screen:stop"]);
 });
 
 test("socket with a wrong token is rejected as unauthorized", async () => {
@@ -112,4 +112,44 @@ test("a viewer that reconnects is resent the analysis, saved Q&A and latest fram
   const { packets } = await client.connect(AUTH);
 
   assert.deepEqual(eventNames(packets), ["analysis:update", "qa:list", "screen:frame"]);
+});
+
+test("screen:stop from the sharer is relayed to an already connected viewer", async () => {
+  const broadcaster = await client.connect(AUTH);
+  await client.emitBinary(broadcaster.sid, "screen:frame", Buffer.from([0xff, 0xd8, 4]));
+  const viewer = await client.connect(AUTH);
+
+  await client.emit(broadcaster.sid, "screen:stop");
+
+  assert.deepEqual(eventNames(await client.poll(viewer.sid)), ["screen:stop"]);
+});
+
+test("a viewer that connects after screen:stop receives no frame", async () => {
+  const broadcaster = await client.connect(AUTH);
+  await client.emitBinary(broadcaster.sid, "screen:frame", Buffer.from([0xff, 0xd8, 6]));
+  await client.emit(broadcaster.sid, "screen:stop");
+
+  const { packets } = await client.connect(AUTH);
+
+  assert.equal(binaryAttachment(packets), null);
+});
+
+test("when the sharing socket disconnects its frame is dropped", async () => {
+  const broadcaster = await client.connect(AUTH);
+  await client.emitBinary(broadcaster.sid, "screen:frame", Buffer.from([0xff, 0xd8, 8]));
+
+  await client.close(broadcaster.sid);
+
+  assert.deepEqual(eventNames((await client.connect(AUTH)).packets), ["analysis:update", "qa:list", "screen:stop"]);
+});
+
+test("when a socket other than the sharer disconnects the frame is kept", async () => {
+  const broadcaster = await client.connect(AUTH);
+  const frame = Buffer.from([0xff, 0xd8, 10]);
+  await client.emitBinary(broadcaster.sid, "screen:frame", frame);
+  const viewer = await client.connect(AUTH);
+
+  await client.close(viewer.sid);
+
+  assertSameFrame(binaryAttachment((await client.connect(AUTH)).packets), frame);
 });

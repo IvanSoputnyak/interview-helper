@@ -5,6 +5,7 @@ const SOCKET_CONNECT = "40";
 const SOCKET_CONNECT_ERROR = "44";
 const SOCKET_EVENT = "42";
 const SOCKET_BINARY_EVENT = "451-";
+const ENGINE_CLOSE = "1";
 const BINARY_PREFIX = "b";
 
 function createPollingClient(baseUrl) {
@@ -41,7 +42,12 @@ function createPollingClient(baseUrl) {
     await send(sid, `${SOCKET_EVENT}${JSON.stringify([event, value])}`);
   }
 
-  return { connect, poll, emit, emitBinary };
+  /** Closes the session, as when a tab is closed; the server sees the socket disconnect. */
+  async function close(sid) {
+    await send(sid, ENGINE_CLOSE);
+  }
+
+  return { close, connect, poll, emit, emitBinary };
 }
 
 function eventNames(packets) {
