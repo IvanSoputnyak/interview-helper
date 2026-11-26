@@ -62,3 +62,91 @@ input[type="text"] {
   margin-top: 10px;
   white-space: pre-wrap;
 }
+
+/* Classes like .live-screen set display, which would otherwise override the hidden attribute. */
+[hidden] {
+  display: none !important;
+}
+
+/* Phone viewer (with .app): no header, compact spacing. */
+.viewer {
+  padding: 8px 12px 24px;
+  font-family: -apple-system, system-ui, Arial, sans-serif;
+}
+
+.small {
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.viewer #summary {
+  margin-top: 16px;
+}
+
+/* Editor look (VS Code dark): the gutter stays put while long lines scroll sideways, so indentation stays readable. */
+.code-block {
+  display: flex;
+  margin: 12px 0 4px;
+  background: #1e1e1e;
+  border-radius: 8px;
+  overflow: hidden;
+  font: 13px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* Keeps iOS from enlarging the code text in landscape. */
+  -webkit-text-size-adjust: 100%;
+}
+
+.code-block pre {
+  margin: 0;
+  font: inherit;
+}
+
+.code-gutter {
+  padding: 12px 10px 12px 12px;
+  color: #858585;
+  text-align: right;
+  border-right: 1px solid #333;
+  user-select: none;
+}
+
+.code-body {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 0;
+  overflow-x: auto;
+  white-space: pre;
+  tab-size: 4;
+}
+
+/* .code-body does the scrolling; the theme's own padding and scroll would fight the gutter. */
+.code-body code.hljs {
+  padding: 0 12px;
+  overflow-x: visible;
+}
+
+.button-row {
+  display: flex;
+  gap: 8px;
+}
+
+.button-row button {
+  flex: 1;
+}
+
+.viewer h3 {
+  margin: 16px 0 4px;
+  font-size: 16px;
+}
+
+.viewer details {
+  border-top: 1px solid #ddd;
+  padding: 10px 0;
+}
+
+.viewer details:first-of-type {
+  margin-top: 12px;
+}
+
+.viewer summary {
+  cursor: pointer;
+  font-weight: bold;
+}

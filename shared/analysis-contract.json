@@ -58,7 +58,7 @@
     },
     {
       "key": "codeSnippet",
-      "description": "Complete, runnable solution with any imports it needs, using the signature shown on screen. Raw code only: no markdown fences and no prose around it."
+      "description": "Complete, runnable solution with any imports it needs, using the signature shown on screen. Formatted the standard way for the language (4-space indents in Python), with lines kept under 80 characters where natural. Raw code only: no markdown fences and no prose around it."
     },
     {
       "key": "explanation",

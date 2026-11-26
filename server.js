@@ -6,7 +6,6 @@ const multer = require("multer");
 const { createServer } = require("http");
 const { Server } = require("socket.io");
 const OpenAI = require("openai");
-const qaStore = require("./lib/qa-store");
 const {
   DEFAULT_ANALYZE_PROMPT: CONTRACT_ANALYZE_PROMPT,
   EXPLAIN_SYSTEM_PROMPT,
@@ -34,8 +33,6 @@ const NO_SHARED_SCREEN_MESSAGE =
   "No shared screen yet. On the Mac, open /broadcast?token=… and press Start sharing.";
 const ANALYZE_SCHEMA_NAME = "screen_analysis";
 const IMPROVE_SCHEMA_NAME = "screen_analysis_improved";
-const QA_QUESTION_MAX_CHARS = 4000;
-const QA_ANSWER_MAX_CHARS = 12000;
 const ALLOWED_IMAGE_TYPES = new Set([
   "image/png",
   "image/jpeg",
@@ -115,20 +112,10 @@ function parseModelOutput(outputText, fallback = {}) {
   }
 }
 
-function toQA(analysis) {
-  return {
-    id: analysis.id,
-    at: analysis.createdAt,
-    q: (analysis.question || analysis.summary || "").slice(0, QA_QUESTION_MAX_CHARS),
-    a: (analysis.codeSnippet || analysis.solution || "").slice(0, QA_ANSWER_MAX_CHARS),
-  };
-}
-
-function commitAnalysis(analysis, { replaceQA = false } = {}) {
+/** Makes `analysis` the live one and pushes it to every viewer. */
+function commitAnalysis(analysis) {
   latestAnalysis = analysis;
-  const row = toQA(analysis);
   io.emit("analysis:update", latestAnalysis);
-  io.emit("qa:list", replaceQA ? qaStore.upsert(row) : qaStore.append(row));
 }
 
 /** Responses API request; with `schemaName` the reply is the strict analysis JSON, without it plain text. */
@@ -183,6 +170,8 @@ for (const page of ["viewer", "broadcast"]) {
 }
 
 app.use(express.static(path.join(__dirname, "public")));
+// Syntax highlighting for the viewer's code block, served locally so the phone needs no internet access.
+app.use("/vendor/highlight", express.static(path.join(__dirname, "node_modules", "@highlightjs", "cdn-assets")));
 
 io.use((socket, next) => {
   const token = socket.handshake.auth.token || socket.handshake.query.token;
@@ -194,7 +183,6 @@ io.use((socket, next) => {
 
 io.on("connection", (socket) => {
   socket.emit("analysis:update", latestAnalysis);
-  socket.emit("qa:list", qaStore.list());
   // A viewer that slept through "screen:stop" still learns that sharing ended.
   if (latestFrame) {
     socket.emit("screen:frame", latestFrame);
@@ -222,10 +210,6 @@ app.get("/api/health", (_req, res) => {
 
 app.get("/api/latest", requireViewerToken, (_req, res) => {
   res.json(latestAnalysis);
-});
-
-app.get("/api/qa", requireViewerToken, (_req, res) => {
-  res.json({ items: qaStore.list() });
 });
 
 /** Wraps an async route so an unexpected error becomes JSON 500 with `failureMessage`. */
@@ -327,9 +311,7 @@ app.post(
     };
     // Only replace the live view if no newer analysis arrived meanwhile.
     if (latestAnalysis.id === current.id) {
-      commitAnalysis(committed, { replaceQA: true });
-    } else {
-      io.emit("qa:list", qaStore.upsert(toQA(committed)));
+      commitAnalysis(committed);
     }
     return res.json(committed);
   }),
@@ -386,8 +368,6 @@ module.exports = {
   httpServer,
   io,
   startListening,
-  toQA,
-  qaStore,
   parseModelOutput,
 };
 

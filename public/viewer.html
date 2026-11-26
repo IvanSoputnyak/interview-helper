@@ -4,81 +4,52 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Interview Helper - Viewer</title>
+    <link rel="stylesheet" href="/vendor/highlight/styles/vs2015.min.css" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="app">
-      <h1>Interview Helper · Viewer</h1>
-      <p class="muted">
-        This page auto-updates when a new screenshot is analyzed.
-      </p>
-      <div id="connectionStatus" class="connection-status">Connecting…</div>
+    <main class="app viewer">
+      <!-- Shown only while the connection is down (see showConnection in viewer.js). -->
+      <div id="connectionStatus" class="connection-status offline">Connecting…</div>
 
-      <div class="card">
-        <h3>Live screen</h3>
-        <img id="liveScreen" class="live-screen" alt="Shared screen" hidden />
-        <div id="liveStatus" class="muted">
-          Waiting for a shared screen… On the Mac, open <code>/broadcast?token=…</code> and press Start sharing.
+      <img id="liveScreen" class="live-screen" alt="Shared screen" hidden />
+      <div id="liveStatus" class="muted small">
+        Waiting for a shared screen… On the Mac, open <code>/broadcast?token=…</code> and press Start sharing.
+      </div>
+      <input id="questionInput" type="text" placeholder="Optional: ask about what's on screen" />
+      <button id="analyzeScreenBtn" class="primary">Capture &amp; analyze</button>
+      <div id="analyzeStatus" class="muted small"></div>
+
+      <!-- Hidden until the first analysis arrives. -->
+      <section id="answer" hidden>
+        <div id="summary" class="result-block"></div>
+        <!-- Editor-style block: line-number gutter + syntax-highlighted code that scrolls sideways. -->
+        <div id="codeBlock" class="code-block" hidden>
+          <pre id="codeGutter" class="code-gutter" aria-hidden="true"></pre>
+          <pre class="code-body"><code id="codeSnippet" class="hljs"></code></pre>
         </div>
-        <input id="questionInput" type="text" placeholder="Optional: ask about what's on screen" />
-        <button id="analyzeScreenBtn" class="primary">Capture &amp; analyze</button>
-        <div id="analyzeStatus" class="muted"></div>
-      </div>
-
-      <div class="card">
-        <div><strong>Last updated:</strong> <span id="updatedAt">-</span></div>
-        <div>
-          <strong>Content type:</strong> <span id="contentType">unknown</span>
+        <div id="complexity" class="muted small"></div>
+        <div class="button-row">
+          <button id="explainBtn">Explain</button>
+          <button id="improveBtn">Improve</button>
         </div>
-      </div>
+        <div id="actionStatus" class="muted small"></div>
 
-      <div class="card">
-        <h3>Summary</h3>
-        <div id="summary" class="result-block">Waiting for first analysis...</div>
-      </div>
+        <div id="explainedCard" hidden>
+          <h3>Explained simply</h3>
+          <div id="explained" class="result-block"></div>
+        </div>
 
-      <div class="card">
-        <h3>Suggested Solution</h3>
-        <div id="solution" class="result-block"></div>
-        <button id="improveBtn">Improve solution</button>
-        <button id="explainBtn">Explain simply</button>
-        <div id="actionStatus" class="muted"></div>
-      </div>
-
-      <div id="explainedCard" class="card" hidden>
-        <h3>Explained simply</h3>
-        <div id="explained" class="result-block"></div>
-      </div>
-
-      <div class="card">
-        <h3>Code Snippet</h3>
-        <pre id="codeSnippet" class="result-block"></pre>
-      </div>
-
-      <div class="card">
-        <h3>Why this algorithm</h3>
-        <div id="algorithmWhy" class="result-block"></div>
-        <div><strong>Time:</strong> <span id="timeComplexity"></span></div>
-        <div><strong>Space:</strong> <span id="spaceComplexity"></span></div>
-      </div>
-
-      <div class="card">
-        <h3>Short explanation</h3>
-        <div id="explanation" class="result-block"></div>
-      </div>
-
-      <div class="card">
-        <h3>Question</h3>
-        <div id="question" class="result-block">—</div>
-      </div>
-
-      <div class="card">
-        <h3>Saved Q&amp;A</h3>
-        <div id="qaList" class="result-block">None yet.</div>
-      </div>
+        <!-- Closed by default; each one is hidden when the model left that field empty. -->
+        <details data-field="solution"><summary>Steps</summary><div class="result-block"></div></details>
+        <details data-field="algorithmWhy"><summary>Why this algorithm</summary><div class="result-block"></div></details>
+        <details data-field="explanation"><summary>Walkthrough</summary><div class="result-block"></div></details>
+        <details data-field="question"><summary>Problem text</summary><div class="result-block"></div></details>
+      </section>
     </main>
 
     <script src="/socket.io/socket.io.js"></script>
+    <script src="/vendor/highlight/highlight.min.js"></script>
     <script src="/request-retry.js"></script>
     <script src="/viewer.js"></script>
   </body>

@@ -2,10 +2,7 @@
 // (the SDK honours OPENAI_BASE_URL), so model replies, races, and fallbacks are exercised for real.
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const fs = require("fs");
 const http = require("http");
-const os = require("os");
-const path = require("path");
 
 const contract = require("../shared/analysis-contract.json");
 const { createPollingClient } = require("./helpers/socket-polling");
@@ -124,10 +121,6 @@ async function latest() {
   return (await fetch(`${baseUrl}/api/latest`, { headers: AUTH })).json();
 }
 
-async function qaItems() {
-  return (await (await fetch(`${baseUrl}/api/qa`, { headers: AUTH })).json()).items;
-}
-
 test.before(async () => {
   // Many tests make OpenAI fail on purpose; the server logs each failure (see "a failed request is logged").
   test.mock.method(console, "error", () => {});
@@ -136,7 +129,6 @@ test.before(async () => {
   process.env.OPENAI_API_KEY = "test-key";
   process.env.OPENAI_MODEL = "gpt-4.1-mini";
   process.env.VIEWER_TOKEN = "test-token";
-  process.env.QA_STORE_PATH = path.join(os.tmpdir(), `ih-qa-openai-${process.pid}.jsonl`);
   server = require("../server");
   const { port } = await server.startListening(0, "127.0.0.1");
   baseUrl = `http://127.0.0.1:${port}`;
@@ -168,7 +160,6 @@ test("analyze-screen before any frame is shared says how to start sharing", asyn
 test.after(async () => {
   await new Promise((resolve) => server.httpServer.close(resolve));
   await new Promise((resolve) => fakeOpenAI.close(resolve));
-  fs.rmSync(process.env.QA_STORE_PATH, { force: true });
 });
 
 test("analyze sends the contract default model when OPENAI_MODEL is a retired default", async () => {
@@ -279,20 +270,6 @@ test("improve finishing after a newer analyze does not replace the live analysis
 
   assert.equal(improved.id, old.id);
   assert.equal((await latest()).id, newer.id);
-});
-
-test("improve finishing after a newer analyze still updates the old question's saved answer", async () => {
-  replyWith(ANALYZE, analysisJSON({ question: "Old problem 2" }));
-  const old = (await analyze()).body;
-  replyWith(IMPROVE, analysisJSON({ question: "Old problem 2", codeSnippet: "improved later" }), { delayMs: 300 });
-  const pendingImprove = improve();
-  await new Promise((resolve) => setTimeout(resolve, 50));
-  replyWith(ANALYZE, analysisJSON({ question: "New problem 2" }));
-  await analyze();
-  await pendingImprove;
-
-  const row = (await qaItems()).find((item) => item.id === old.id);
-  assert.equal(row.a, "improved later");
 });
 
 test("analyze without a question sends exactly the default prompt", async () => {

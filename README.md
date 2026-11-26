@@ -95,12 +95,11 @@ Mac (share page) ──about 1 frame/sec──▶ server on the Mac ──▶ ph
 
 ### On the phone/tablet
 
-- **Live screen**: the top card shows the Mac's screen, refreshed about once a second. The line under it says `Live · <time>` with the time of the last frame; if that time stops changing, the share has paused (see troubleshooting). Pinch to zoom in on small text.
-- **Capture & analyze**: sends the newest frame to the AI. The answer fills in **Summary**, **Suggested Solution**, **Code Snippet**, complexity, and a short walkthrough.
-  - To ask about something specific, type it in **"Optional: ask about what's on screen"** first (for example "why is this O(n)?" or "what does line 4 do?"). The AI answers your question in **Summary** and still solves the problem on screen. Leave it empty for a full solution.
-- **Explain simply**: a beginner-friendly walkthrough of the current answer (the idea with an everyday analogy, a small example traced step by step, why the slow approach is worse, common mistakes). It appears in the **Explained simply** card.
-- **Improve solution**: asks the AI to re-check the answer for bugs, missed edge cases and speed, and replaces it with the improved version.
-- **Saved Q&A**: past questions and answers (the last 25 by default, `HISTORY_MAX_ITEMS`).
+- **Live screen**: the page opens on the Mac's screen, refreshed about once a second. The line under it says `Live · <time>` with the time of the last frame; if that time stops changing, the share has paused (see troubleshooting). Pinch to zoom in on small text.
+- **Capture & analyze**: sends the newest frame to the AI. The answer appears below: a short summary, the code (numbered and colored like in an editor; swipe sideways on long lines), and time/space. **Steps**, **Why this algorithm**, **Walkthrough** and **Problem text** are folded away; tap one to open it.
+  - To ask about something specific, type it in **"Optional: ask about what's on screen"** first (for example "why is this O(n)?" or "what does line 4 do?"). The AI answers your question first in the summary and still solves the problem on screen. Leave it empty for a full solution.
+- **Explain**: a beginner-friendly walkthrough of the current answer (the idea with an everyday analogy, a small example traced step by step, why the slow approach is worse, common mistakes). It appears under **Explained simply**.
+- **Improve**: asks the AI to re-check the answer for bugs, missed edge cases and speed, and replaces it with the improved version.
 
 Several phones or tablets can watch at once; a new answer shows on all of them.
 
@@ -108,10 +107,10 @@ Several phones or tablets can watch at once; a new answer shows on all of them.
 
 You don't need to reload anything; both pages recover on their own.
 
-- **Wi‑Fi drops or the server restarts**: the phone and the Mac share page show **Connection lost · reconnecting…** in red, keep trying every few seconds, and switch back to **Connected** by themselves. The phone then gets the latest answer, history and screen again, and the Mac keeps sharing (frames pause and resume; no need to press Start sharing again).
+- **Wi‑Fi drops or the server restarts**: the phone and the Mac share page show **Connection lost · reconnecting…** in red and keep trying every few seconds. Once back, the share page says **Connected** and the phone's red line simply disappears. The phone then gets the latest answer and screen again, and the Mac keeps sharing (frames pause and resume; no need to press Start sharing again).
 - **Phone was locked or you switched apps**: when you come back after 5 seconds or more, the viewer reconnects at once, so the picture is current within a second or two.
 - **Frozen picture**: if no new frame arrives for 5 seconds, the line under the screen says **No new frame for …s** and why (reconnecting, or sharing on the Mac paused), so a frozen picture is never mistaken for live.
-- **A button fails mid-request** (Capture & analyze, Improve, Explain simply): it's retried automatically up to 3 times (after 1, 2 and 4 seconds) and shows **Reconnecting (1/3)…**. If the phone is offline, it first shows **Waiting for connection…** and waits up to 30 seconds for the connection to return, then continues. Problems that retrying can't fix (wrong token, missing API key) are shown at once.
+- **A button fails mid-request** (Capture & analyze, Improve, Explain): it's retried automatically up to 3 times (after 1, 2 and 4 seconds) and shows **Reconnecting (1/3)…**. If the phone is offline, it first shows **Waiting for connection…** and waits up to 30 seconds for the connection to return, then continues. Problems that retrying can't fix (wrong token, missing API key) are shown at once.
 - **OpenAI is busy or rate-limited**: the server retries OpenAI twice by itself before reporting an error.
 - **Not recovered automatically**: if the token changes (for example `VIEWER_TOKEN` was empty and the server restarted with a new random one), open the new link. Also, if you stop the share on the Mac, press **Start sharing** again: browsers require a click to share a screen.
 
@@ -146,8 +145,6 @@ You don't need to reload anything; both pages recover on their own.
 - `OPENAI_MODEL` - model name (default: `defaultModel` in `shared/analysis-contract.json`, currently `gpt-6.1-sol`)
 - `ANALYZE_PROMPT` - optional server-side default prompt used when a client omits `prompt`
 - `VIEWER_TOKEN` - token required for `/viewer`, `/broadcast`, every `/api/*` route except `/api/health`, and the socket (random per start if unset)
-- `HISTORY_MAX_ITEMS` - saved Q&A size (default `25`)
-- `QA_STORE_PATH` - saved Q&A file (default `data/qa.jsonl`)
 
 ## Commands
 

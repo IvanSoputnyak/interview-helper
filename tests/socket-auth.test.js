@@ -2,13 +2,9 @@
 // (see helpers/socket-polling.js), so no socket.io-client dependency is needed.
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const fs = require("fs");
-const os = require("os");
-const path = require("path");
 
 process.env.VIEWER_TOKEN = "test-token";
 process.env.OPENAI_API_KEY = "";
-process.env.QA_STORE_PATH = path.join(os.tmpdir(), `ih-qa-socket-${process.pid}.jsonl`);
 
 const { startListening, httpServer } = require("../server");
 const {
@@ -36,7 +32,6 @@ test.before(async () => {
 
 test.after(async () => {
   await new Promise((resolve) => httpServer.close(resolve));
-  fs.rmSync(process.env.QA_STORE_PATH, { force: true });
 });
 
 test("socket with the viewer token is accepted", async () => {
@@ -45,9 +40,9 @@ test("socket with the viewer token is accepted", async () => {
 });
 
 // Runs before any frame is shared, so the viewer is told nothing is being shared.
-test("socket with the viewer token immediately receives the latest analysis, saved Q&A and screen:stop", async () => {
+test("socket with the viewer token immediately receives the latest analysis and screen:stop", async () => {
   const { packets } = await client.connect(AUTH);
-  assert.deepEqual(eventNames(packets), ["analysis:update", "qa:list", "screen:stop"]);
+  assert.deepEqual(eventNames(packets), ["analysis:update", "screen:stop"]);
 });
 
 test("socket with a wrong token is rejected as unauthorized", async () => {
@@ -105,13 +100,13 @@ test("an oversized frame is ignored and the last valid frame is kept", async () 
   assertSameFrame(binaryAttachment((await client.connect(AUTH)).packets), frame);
 });
 
-test("a viewer that reconnects is resent the analysis, saved Q&A and latest frame", async () => {
+test("a viewer that reconnects is resent the analysis and latest frame", async () => {
   const broadcaster = await client.connect(AUTH);
   await client.emitBinary(broadcaster.sid, "screen:frame", Buffer.from([0xff, 0xd8, 3]));
 
   const { packets } = await client.connect(AUTH);
 
-  assert.deepEqual(eventNames(packets), ["analysis:update", "qa:list", "screen:frame"]);
+  assert.deepEqual(eventNames(packets), ["analysis:update", "screen:frame"]);
 });
 
 test("screen:stop from the sharer is relayed to an already connected viewer", async () => {
@@ -140,7 +135,7 @@ test("when the sharing socket disconnects its frame is dropped", async () => {
 
   await client.close(broadcaster.sid);
 
-  assert.deepEqual(eventNames((await client.connect(AUTH)).packets), ["analysis:update", "qa:list", "screen:stop"]);
+  assert.deepEqual(eventNames((await client.connect(AUTH)).packets), ["analysis:update", "screen:stop"]);
 });
 
 test("when a socket other than the sharer disconnects the frame is kept", async () => {
