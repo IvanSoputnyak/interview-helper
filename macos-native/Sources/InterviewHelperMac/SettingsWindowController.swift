@@ -42,19 +42,12 @@ final class SettingsWindowController: NSWindowController {
     /// Reloads stored values each time so unsaved edits from a closed window never linger.
     func present() {
         loadValues()
-        showWindow(nil)
-        window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        bringToFront()
     }
 
     @objc private func save() {
         do {
-            let key = apiKeyField.stringValue
-            if key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                try KeychainStore.deleteAPIKey()
-            } else {
-                try KeychainStore.saveAPIKey(key)
-            }
+            try KeychainStore.saveAPIKey(apiKeyField.stringValue)
             ModelSettings.save(model: modelField.stringValue, reasoningEffort: selectedEffort())
             QAStore.saveMaxItems(QAStore.maxItems(fromFieldText: historySizeField.stringValue))
             window?.close()
@@ -139,7 +132,6 @@ final class SettingsWindowController: NSWindowController {
         effortPopup.selectItem(at: Self.popupIndex(for: settings.reasoningEffort))
         historySizeField.integerValue = QAStore.maxItems
     }
-
 
     private func selectedEffort() -> ReasoningEffort? {
         Self.effort(atPopupIndex: effortPopup.indexOfSelectedItem)

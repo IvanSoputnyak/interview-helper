@@ -5,66 +5,60 @@ public enum KeychainStore {
     public static let service = "com.interviewhelper.mac"
     private static let apiKeyAccount = "openai_api_key"
 
-    /// `service` is overridable so tests use a throwaway item instead of the user's real key.
+    /// Saved key, or `nil` when none is stored. `service` is overridable so tests use a throwaway item instead of the user's real key.
     public static func loadAPIKey(service: String = service) -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: apiKeyAccount,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
+        var query = baseQuery(service: service)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
         var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess, let data = item as? Data else {
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+              let data = item as? Data,
+              let key = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !key.isEmpty
+        else {
             return nil
         }
-        return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return key
     }
 
+    /// Stores the trimmed key; a blank key deletes the saved one.
     public static func saveAPIKey(_ key: String, service: String = service) throws {
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             try deleteAPIKey(service: service)
             return
         }
-        guard let data = trimmed.data(using: .utf8) else {
-            throw NSError(domain: "KeychainStore", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid API key encoding."])
-        }
-
-        let base: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: apiKeyAccount,
-        ]
-
-        let update: [String: Any] = [kSecValueData as String: data]
-        let updateStatus = SecItemUpdate(base as CFDictionary, update as CFDictionary)
-        if updateStatus == errSecSuccess {
+        let query = baseQuery(service: service)
+        let data = Data(trimmed.utf8)
+        let updateStatus = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        switch updateStatus {
+        case errSecSuccess:
             return
-        }
-        if updateStatus == errSecItemNotFound {
-            var add = base
+        case errSecItemNotFound:
+            var add = query
             add[kSecValueData as String] = data
             let addStatus = SecItemAdd(add as CFDictionary, nil)
             guard addStatus == errSecSuccess else {
                 throw keychainError(addStatus)
             }
-            return
+        default:
+            throw keychainError(updateStatus)
         }
-        throw keychainError(updateStatus)
     }
 
     public static func deleteAPIKey(service: String = service) throws {
-        let query: [String: Any] = [
+        let status = SecItemDelete(baseQuery(service: service) as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw keychainError(status)
+        }
+    }
+
+    private static func baseQuery(service: String) -> [String: Any] {
+        [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: apiKeyAccount,
         ]
-        let status = SecItemDelete(query as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw keychainError(status)
-        }
     }
 
     private static func keychainError(_ status: OSStatus) -> NSError {

@@ -33,6 +33,19 @@ struct RequestBodyTests {
         #expect(body["reasoning"] == nil)
     }
 
+    @Test func test_requestBody_whenTextHasSlashes_sendsThemUnescaped() throws {
+        let body = try OpenAIAnalyzer.requestBody(
+            model: "m",
+            reasoningEffort: nil,
+            system: "s",
+            userParts: [["type": "input_image", "image_url": "data:image/png;base64,ab/cd+/"]],
+            schemaName: nil
+        )
+        let json = String(decoding: body, as: UTF8.self)
+        #expect(json.contains("base64,ab/cd+/"))
+        #expect(!json.contains("\\/"))
+    }
+
     @Test func test_requestBody_whenSchemaNamed_requestsStrictJSONSchema() throws {
         let body = try decodedBody(reasoningEffort: nil, schemaName: "screen_analysis")
         let format = (body["text"] as? [String: Any])?["format"] as? [String: Any]

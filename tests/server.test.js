@@ -57,17 +57,12 @@ test("wrong token of a different length is rejected", async () => {
   assert.equal(response.status, 401);
 });
 
-test("latest and history reject missing token and return data with token", async () => {
+test("latest rejects a missing token and returns data with the token", async () => {
   const latestUnauthorized = await fetch(`${baseUrl}/api/latest`);
   assert.equal(latestUnauthorized.status, 401);
 
   const latestAuthorized = await fetch(`${baseUrl}/api/latest`, { headers: AUTH });
   assert.equal(latestAuthorized.status, 200);
-
-  const historyAuthorized = await fetch(`${baseUrl}/api/history`, { headers: AUTH });
-  assert.equal(historyAuthorized.status, 200);
-  const payload = await historyAuthorized.json();
-  assert.ok(Array.isArray(payload.items));
 });
 
 test("toQA prefers question and code snippet", () => {
@@ -182,4 +177,35 @@ test("improve returns clear error when api key missing", async () => {
   assert.equal(response.status, 400);
   const payload = await response.json();
   assert.match(payload.error, /OPENAI_API_KEY is missing/i);
+});
+
+test("broadcast page rejects a missing token and serves with a valid token", async () => {
+  assert.equal((await fetch(`${baseUrl}/broadcast`)).status, 401);
+  assert.equal((await fetch(`${baseUrl}/broadcast`, { headers: AUTH })).status, 200);
+});
+
+test("broadcast.html static path cannot bypass the token check", async () => {
+  assert.equal((await fetch(`${baseUrl}/broadcast.html`)).status, 401);
+});
+
+test("analyze-screen requires the viewer token", async () => {
+  const response = await fetch(`${baseUrl}/api/analyze-screen`, { method: "POST" });
+  assert.equal(response.status, 401);
+});
+
+test("analyze-screen returns a clear error when the api key is missing", async () => {
+  const response = await fetch(`${baseUrl}/api/analyze-screen`, { method: "POST", headers: AUTH });
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /OPENAI_API_KEY is missing/);
+});
+
+test("explain requires the viewer token", async () => {
+  const response = await fetch(`${baseUrl}/api/explain`, { method: "POST" });
+  assert.equal(response.status, 401);
+});
+
+test("explain returns a clear error when the api key is missing", async () => {
+  const response = await fetch(`${baseUrl}/api/explain`, { method: "POST", headers: AUTH });
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /OPENAI_API_KEY is missing/);
 });

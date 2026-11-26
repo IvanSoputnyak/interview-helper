@@ -12,6 +12,18 @@
       <p class="muted">
         This page auto-updates when a new screenshot is analyzed.
       </p>
+      <div id="connectionStatus" class="connection-status">Connecting…</div>
+
+      <div class="card">
+        <h3>Live screen</h3>
+        <img id="liveScreen" class="live-screen" alt="Shared screen" hidden />
+        <div id="liveStatus" class="muted">
+          Waiting for a shared screen… On the Mac, open <code>/broadcast?token=…</code> and press Start sharing.
+        </div>
+        <input id="questionInput" type="text" placeholder="Optional: ask about what's on screen" />
+        <button id="analyzeScreenBtn" class="primary">Capture &amp; analyze</button>
+        <div id="analyzeStatus" class="muted"></div>
+      </div>
 
       <div class="card">
         <div><strong>Last updated:</strong> <span id="updatedAt">-</span></div>
@@ -29,7 +41,13 @@
         <h3>Suggested Solution</h3>
         <div id="solution" class="result-block"></div>
         <button id="improveBtn">Improve solution</button>
-        <div id="improveStatus" class="muted"></div>
+        <button id="explainBtn">Explain simply</button>
+        <div id="actionStatus" class="muted"></div>
+      </div>
+
+      <div id="explainedCard" class="card" hidden>
+        <h3>Explained simply</h3>
+        <div id="explained" class="result-block"></div>
       </div>
 
       <div class="card">
@@ -61,6 +79,7 @@
     </main>
 
     <script src="/socket.io/socket.io.js"></script>
+    <script src="/request-retry.js"></script>
     <script src="/viewer.js"></script>
   </body>
 </html>

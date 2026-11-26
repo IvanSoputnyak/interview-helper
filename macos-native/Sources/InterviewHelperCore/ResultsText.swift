@@ -16,6 +16,6 @@ public enum ResultsText {
 
     /// Hidden mode keeps the question (and leaves out the summary, which gives the approach away).
     private static func questionOnly(_ analysis: ScreenAnalysis) -> String {
-        "Question\n\(analysis.value(forKey: "question"))\n\n\(hiddenSolutionNote)"
+        "Question\n\(analysis.displayQuestion)\n\n\(hiddenSolutionNote)"
     }
 }

@@ -4,3 +4,4 @@ data/
 dist/
 macos-native/.build/
 macos-native/Resources/AppIcon.icns
+coverage/

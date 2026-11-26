@@ -13,6 +13,7 @@ struct QAStoreTests {
         }
         setenv("QA_STORE_PATH", path.path, 1)
         defer {
+            QAStore.flush()
             unsetenv("QA_STORE_PATH")
             try? FileManager.default.removeItem(at: path)
         }
@@ -25,6 +26,19 @@ struct QAStoreTests {
             QAStore.append(QARecord(id: "2", at: "t2", q: "Q2", a: "A2"))
             #expect(QAStore.list().map(\.id) == ["2", "1"])
         }
+    }
+
+    @Test func test_append_whenPathChangesBeforeSaveRuns_writesToPathAtCallTime() throws {
+        let first = FileManager.default.temporaryDirectory.appendingPathComponent("ih-qa-swift-\(UUID().uuidString).jsonl")
+        defer { try? FileManager.default.removeItem(at: first) }
+        withTempStore {
+            setenv("QA_STORE_PATH", first.path, 1)
+            QAStore.append(QARecord(id: "1", at: "t1", q: "Q1", a: "A1"))
+            unsetenv("QA_STORE_PATH")
+            QAStore.flush()
+        }
+        let saved = try String(contentsOf: first, encoding: .utf8)
+        #expect(saved.contains("\"id\":\"1\""))
     }
 
     @Test func test_list_whenStoreFileMissing_returnsEmpty() {

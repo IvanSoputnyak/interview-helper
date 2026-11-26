@@ -82,3 +82,12 @@ test("missing store file lists as empty", () => {
   fs.rmSync(storePath, { force: true });
   assert.deepEqual(qaStore.list(), []);
 });
+
+test("append and upsert return the saved list so callers need no second read", () => {
+  reset();
+  const afterAppend = qaStore.append({ id: "1", at: "t1", q: "Q1", a: "A1" });
+  assert.deepEqual(afterAppend, qaStore.list());
+  const afterUpsert = qaStore.upsert({ id: "1", at: "t2", q: "Q1", a: "A2" });
+  assert.deepEqual(afterUpsert, qaStore.list());
+  assert.equal(afterUpsert[0].a, "A2");
+});

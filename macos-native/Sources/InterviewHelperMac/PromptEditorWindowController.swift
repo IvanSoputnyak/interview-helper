@@ -29,9 +29,7 @@ final class PromptEditorWindowController: NSWindowController {
     /// Reloads the saved prompt each time so a cancelled edit never lingers.
     func present() {
         textView.string = UserDefaults.standard.string(forKey: UDKeys.customPromptText) ?? AnalyzePrompt.defaultBundled
-        showWindow(nil)
-        window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        bringToFront()
     }
 
     @objc private func save() {
