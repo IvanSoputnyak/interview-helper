@@ -16,7 +16,6 @@
       <div id="liveStatus" class="muted small">
         Waiting for a shared screen… On the Mac, open <code>/broadcast?token=…</code> and press Start sharing.
       </div>
-      <input id="questionInput" type="text" placeholder="Optional: ask about what's on screen" />
       <button id="analyzeScreenBtn" class="primary">Capture &amp; analyze</button>
       <div id="analyzeStatus" class="muted small"></div>
 
@@ -28,7 +27,7 @@
           <pre id="codeGutter" class="code-gutter" aria-hidden="true"></pre>
           <pre class="code-body"><code id="codeSnippet" class="hljs"></code></pre>
         </div>
-        <div id="complexity" class="muted small"></div>
+        <div id="complexity" class="muted small result-block"></div>
         <div class="button-row">
           <button id="explainBtn">Explain</button>
           <button id="improveBtn">Improve</button>
@@ -42,9 +41,8 @@
 
         <!-- Closed by default; each one is hidden when the model left that field empty. -->
         <details data-field="solution"><summary>Steps</summary><div class="result-block"></div></details>
-        <details data-field="algorithmWhy"><summary>Why this algorithm</summary><div class="result-block"></div></details>
-        <details data-field="explanation"><summary>Walkthrough</summary><div class="result-block"></div></details>
-        <details data-field="question"><summary>Problem text</summary><div class="result-block"></div></details>
+        <details data-field="algorithmWhy"><summary>Why this works</summary><div class="result-block"></div></details>
+        <details data-field="explanation"><summary>Example, step by step</summary><div class="result-block"></div></details>
       </section>
     </main>
 

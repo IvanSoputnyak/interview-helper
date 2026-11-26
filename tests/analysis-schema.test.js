@@ -7,7 +7,6 @@ const {
   ANALYSIS_KEYS,
   DEFAULT_MODEL,
   analysisJsonSchema,
-  buildAnalyzePrompt,
   buildExplainPrompt,
   buildImprovePrompt,
   pickAnalysisFields,
@@ -163,19 +162,3 @@ test("buildExplainPrompt includes the current code", () => {
   assert.match(prompt, /^Current codeSnippet: return 1$/m);
 });
 
-test("buildAnalyzePrompt without a question returns the base prompt unchanged", () => {
-  assert.equal(buildAnalyzePrompt("Solve it.", undefined), "Solve it.");
-});
-
-test("buildAnalyzePrompt with a blank question returns the base prompt unchanged", () => {
-  assert.equal(buildAnalyzePrompt("Solve it.", "   "), "Solve it.");
-});
-
-test("buildAnalyzePrompt with a non-string question returns the base prompt unchanged", () => {
-  assert.equal(buildAnalyzePrompt("Solve it.", 5), "Solve it.");
-});
-
-test("buildAnalyzePrompt with a question appends the instructions and the trimmed question", () => {
-  const prompt = buildAnalyzePrompt("Solve it.", "  why O(n)?  ");
-  assert.equal(prompt, `Solve it.\n\n${contract.userQuestionInstructions}\nQuestion: why O(n)?`);
-});

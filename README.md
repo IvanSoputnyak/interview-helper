@@ -1,6 +1,6 @@
 # Interview Helper (Native macOS)
 
-Standalone Mac App Store–ready menu bar app: capture a coding question, analyze with **your** OpenAI API key, view results on this Mac. The optional Node backend turns a phone or tablet into a **portable screen**: watch the Mac's screen live and ask the AI about it from another room (see [Portable screen: how to use it](#portable-screen-how-to-use-it)).
+Standalone Mac App Store–ready menu bar app: capture a coding question, analyze with **your** OpenAI API key, view results on this Mac. The optional Node backend turns a phone or tablet into a **portable screen**: watch the Mac's screen live and have the AI solve and explain it from another room (see [Portable screen: how to use it](#portable-screen-how-to-use-it)).
 
 ## Features
 
@@ -96,8 +96,7 @@ Mac (share page) ──about 1 frame/sec──▶ server on the Mac ──▶ ph
 ### On the phone/tablet
 
 - **Live screen**: the page opens on the Mac's screen, refreshed about once a second. The line under it says `Live · <time>` with the time of the last frame; if that time stops changing, the share has paused (see troubleshooting). Pinch to zoom in on small text.
-- **Capture & analyze**: sends the newest frame to the AI. The answer appears below: a short summary, the code (numbered and colored like in an editor; swipe sideways on long lines), and time/space. **Steps**, **Why this algorithm**, **Walkthrough** and **Problem text** are folded away; tap one to open it.
-  - To ask about something specific, type it in **"Optional: ask about what's on screen"** first (for example "why is this O(n)?" or "what does line 4 do?"). The AI answers your question first in the summary and still solves the problem on screen. Leave it empty for a full solution.
+- **Capture & analyze**: sends the newest frame to the AI. The answer appears below: a short summary, the code (numbered and colored like in an editor; swipe sideways on long lines), and time/memory, all in plain words. **Steps**, **Why this works** and **Example, step by step** are folded away; tap one to open it.
 - **Explain**: a beginner-friendly walkthrough of the current answer (the idea with an everyday analogy, a small example traced step by step, why the slow approach is worse, common mistakes). It appears under **Explained simply**.
 - **Improve**: asks the AI to re-check the answer for bugs, missed edge cases and speed, and replaces it with the improved version.
 
@@ -119,7 +118,7 @@ You don't need to reload anything; both pages recover on their own.
 ### Privacy
 
 - The live picture only travels over your Wi‑Fi, from the Mac to the server (also on the Mac) to your phone.
-- Only the single frame you analyze goes to OpenAI, with your question.
+- Only the single frame you analyze goes to OpenAI.
 - When you press **Stop sharing** or close the share tab, the server forgets the last frame and the phone clears the picture, so an old screen is never shown or analyzed later.
 - Every page and request needs the token, so keep the viewer link private.
 

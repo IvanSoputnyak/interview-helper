@@ -1,7 +1,7 @@
 {
   "defaultModel": "gpt-6.1-sol",
   "retiredDefaultModels": ["gpt-4.1-mini"],
-  "systemPrompt": "You are an expert competitive programmer and technical interviewer. You read coding problems from screenshots of a whole screen and return correct, efficient solutions. Read only what is really on screen; never guess numbers or rules you cannot read. Be concise and use simple words.",
+  "systemPrompt": "You are an expert competitive programmer and technical interviewer. You read coding problems from screenshots of a whole screen and return correct, efficient solutions. Read only what is really on screen; never guess numbers or rules you cannot read. Write for a beginner with no computer science background: plain everyday words, short sentences, no jargon. If a technical word is needed, say what it means in a few words.",
   "defaultAnalyzePrompt": [
     "Solve the coding interview problem in this screenshot.",
     "- The screenshot may show the whole screen. Use only the problem statement, its examples and constraints, and the code editor. Ignore browser tabs, menus, notifications, chat and other windows.",
@@ -12,9 +12,8 @@
     "- Before answering, run your code in your head on every example shown. If any result differs from the expected output, fix the code first.",
     "- If the problem is cut off or some text is unreadable, solve what is visible and say what is missing in summary.",
     "- If it is not a coding problem, set detectedContentType accordingly, answer briefly in summary, and leave fields that do not apply empty.",
-    "- Use few, simple words."
+    "- Keep every text field short and simple enough for a beginner to follow."
   ],
-  "userQuestionInstructions": "The person viewing this screen also asks the question below. Start summary with a plain answer to it (a few sentences are fine), then the approach. Still fill the other fields for the coding problem on screen; if there is none, leave them empty.",
   "improveSystemPrompt": "You are a senior technical interviewer reviewing a candidate's solution for correctness, edge cases, and complexity. Be concise and use simple words.",
   "improveInstructions": [
     "Review this interview solution.",
@@ -46,7 +45,7 @@
   "fields": [
     {
       "key": "summary",
-      "description": "One line: the approach and its key idea. When the viewer asked a question, first answer it (a few sentences are fine). If the problem is cut off or unclear, say what is missing."
+      "description": "One line in plain words: what the code does and the key idea. If the problem is cut off or unclear, say what is missing."
     },
     {
       "key": "question",
@@ -54,7 +53,7 @@
     },
     {
       "key": "solution",
-      "description": "The approach in 2-4 short steps."
+      "description": "The approach in 2-4 short steps, in plain words."
     },
     {
       "key": "codeSnippet",
@@ -62,19 +61,19 @@
     },
     {
       "key": "explanation",
-      "description": "Walk through one example input step by step, briefly."
+      "description": "Take one small example input and walk through it step by step, as if explaining to a friend who has never coded: plain everyday words, one short sentence per step, saying what the code looks at and what it remembers at each step, and ending with the answer."
     },
     {
       "key": "algorithmWhy",
-      "description": "Why this approach fits, and why simpler or brute-force alternatives are worse."
+      "description": "In plain words: why this idea works, and why the obvious try-everything approach would be too slow."
     },
     {
       "key": "timeComplexity",
-      "description": "Big-O time with variables defined, e.g. O(n log n) where n is the array length."
+      "description": "Big-O time, then what it means in a few plain words, e.g. O(n): goes through the list once."
     },
     {
       "key": "spaceComplexity",
-      "description": "Big-O extra space with variables defined, e.g. O(n)."
+      "description": "Big-O extra memory, then what it means in a few plain words, e.g. O(n): remembers up to one entry per number."
     },
     {
       "key": "detectedContentType",

@@ -8,7 +8,6 @@ const complexityEl = document.getElementById("complexity");
 const detailEls = document.querySelectorAll("details[data-field]");
 const liveScreenEl = document.getElementById("liveScreen");
 const liveStatusEl = document.getElementById("liveStatus");
-const questionInput = document.getElementById("questionInput");
 const analyzeScreenBtn = document.getElementById("analyzeScreenBtn");
 const analyzeStatusEl = document.getElementById("analyzeStatus");
 const improveBtn = document.getElementById("improveBtn");
@@ -46,11 +45,11 @@ function renderCode(rawCode) {
   }
 }
 
-/** "Time: O(n) · Space: O(1)", leaving out whichever the model left empty. */
+/** "Time: …" and "Memory: …" on their own lines, leaving out whichever the model left empty. */
 function complexityLine({ timeComplexity, spaceComplexity }) {
-  return [timeComplexity && `Time: ${timeComplexity}`, spaceComplexity && `Space: ${spaceComplexity}`]
+  return [timeComplexity && `Time: ${timeComplexity}`, spaceComplexity && `Memory: ${spaceComplexity}`]
     .filter(Boolean)
-    .join(" · ");
+    .join("\n");
 }
 
 function renderAnalysis(data) {
@@ -184,7 +183,6 @@ function analyzeScreen() {
     statusEl: analyzeStatusEl,
     busyText: "Analyzing the screen…",
     route: "/api/analyze-screen",
-    body: { question: questionInput.value },
   };
   return runAction(action, (payload) => {
     renderAnalysis(payload);

@@ -272,16 +272,10 @@ test("improve finishing after a newer analyze does not replace the live analysis
   assert.equal((await latest()).id, newer.id);
 });
 
-test("analyze without a question sends exactly the default prompt", async () => {
+test("analyze sends exactly the default prompt", async () => {
   replyWith(ANALYZE, analysisJSON({ question: "Two sum" }));
   await analyze();
   assert.equal(userText(fakeRequests.at(-1)), contract.defaultAnalyzePrompt.join("\n"));
-});
-
-test("analyze with a question sends it after the default prompt", async () => {
-  replyWith(ANALYZE, analysisJSON({ question: "Two sum" }));
-  await analyze({ question: "why a hash map?" });
-  assert.match(userText(fakeRequests.at(-1)), /\nQuestion: why a hash map\?$/);
 });
 
 test("analyze-screen sends the latest shared frame as a JPEG image", async () => {
@@ -300,11 +294,11 @@ test("analyze-screen makes its result the live analysis", async () => {
   assert.equal((await latest()).id, body.id);
 });
 
-test("analyze-screen with a question sends it in the prompt", async () => {
+test("analyze-screen sends exactly the default prompt", async () => {
   await shareFrame(Buffer.from([0xff, 0xd8, 2]));
   replyWith(ANALYZE, analysisJSON({ question: "Q" }));
-  await analyzeScreen({ question: "what does line 3 do?" });
-  assert.match(userText(fakeRequests.at(-1)), /\nQuestion: what does line 3 do\?$/);
+  await analyzeScreen();
+  assert.equal(userText(fakeRequests.at(-1)), contract.defaultAnalyzePrompt.join("\n"));
 });
 
 test("explain sends the contract explain system prompt", async () => {

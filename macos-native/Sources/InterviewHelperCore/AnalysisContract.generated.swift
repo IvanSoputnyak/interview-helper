@@ -15,9 +15,9 @@ enum AnalysisContract {
         "gpt-4.1-mini",
     ]
 
-    static let systemPrompt = "You are an expert competitive programmer and technical interviewer. You read coding problems from screenshots of a whole screen and return correct, efficient solutions. Read only what is really on screen; never guess numbers or rules you cannot read. Be concise and use simple words."
+    static let systemPrompt = "You are an expert competitive programmer and technical interviewer. You read coding problems from screenshots of a whole screen and return correct, efficient solutions. Read only what is really on screen; never guess numbers or rules you cannot read. Write for a beginner with no computer science background: plain everyday words, short sentences, no jargon. If a technical word is needed, say what it means in a few words."
 
-    static let defaultAnalyzePrompt = "Solve the coding interview problem in this screenshot.\n- The screenshot may show the whole screen. Use only the problem statement, its examples and constraints, and the code editor. Ignore browser tabs, menus, notifications, chat and other windows.\n- If several problems are visible, solve the one that is open or most prominent.\n- Use the programming language and the exact function or class signature shown in the editor; if none is visible, use Python.\n- Give an efficient solution: optimal or near-optimal; brute force only if it is optimal; not over-engineered.\n- Respect the constraints shown (input sizes, value ranges) and handle edge cases.\n- Before answering, run your code in your head on every example shown. If any result differs from the expected output, fix the code first.\n- If the problem is cut off or some text is unreadable, solve what is visible and say what is missing in summary.\n- If it is not a coding problem, set detectedContentType accordingly, answer briefly in summary, and leave fields that do not apply empty.\n- Use few, simple words."
+    static let defaultAnalyzePrompt = "Solve the coding interview problem in this screenshot.\n- The screenshot may show the whole screen. Use only the problem statement, its examples and constraints, and the code editor. Ignore browser tabs, menus, notifications, chat and other windows.\n- If several problems are visible, solve the one that is open or most prominent.\n- Use the programming language and the exact function or class signature shown in the editor; if none is visible, use Python.\n- Give an efficient solution: optimal or near-optimal; brute force only if it is optimal; not over-engineered.\n- Respect the constraints shown (input sizes, value ranges) and handle edge cases.\n- Before answering, run your code in your head on every example shown. If any result differs from the expected output, fix the code first.\n- If the problem is cut off or some text is unreadable, solve what is visible and say what is missing in summary.\n- If it is not a coding problem, set detectedContentType accordingly, answer briefly in summary, and leave fields that do not apply empty.\n- Keep every text field short and simple enough for a beginner to follow."
 
     static let improveSystemPrompt = "You are a senior technical interviewer reviewing a candidate's solution for correctness, edge cases, and complexity. Be concise and use simple words."
 
@@ -42,7 +42,7 @@ enum AnalysisContract {
     static let fields = [
         AnalysisField(
             key: "summary",
-            description: "One line: the approach and its key idea. When the viewer asked a question, first answer it (a few sentences are fine). If the problem is cut off or unclear, say what is missing.",
+            description: "One line in plain words: what the code does and the key idea. If the problem is cut off or unclear, say what is missing.",
             allowedValues: []
         ),
         AnalysisField(
@@ -52,7 +52,7 @@ enum AnalysisContract {
         ),
         AnalysisField(
             key: "solution",
-            description: "The approach in 2-4 short steps.",
+            description: "The approach in 2-4 short steps, in plain words.",
             allowedValues: []
         ),
         AnalysisField(
@@ -62,22 +62,22 @@ enum AnalysisContract {
         ),
         AnalysisField(
             key: "explanation",
-            description: "Walk through one example input step by step, briefly.",
+            description: "Take one small example input and walk through it step by step, as if explaining to a friend who has never coded: plain everyday words, one short sentence per step, saying what the code looks at and what it remembers at each step, and ending with the answer.",
             allowedValues: []
         ),
         AnalysisField(
             key: "algorithmWhy",
-            description: "Why this approach fits, and why simpler or brute-force alternatives are worse.",
+            description: "In plain words: why this idea works, and why the obvious try-everything approach would be too slow.",
             allowedValues: []
         ),
         AnalysisField(
             key: "timeComplexity",
-            description: "Big-O time with variables defined, e.g. O(n log n) where n is the array length.",
+            description: "Big-O time, then what it means in a few plain words, e.g. O(n): goes through the list once.",
             allowedValues: []
         ),
         AnalysisField(
             key: "spaceComplexity",
-            description: "Big-O extra space with variables defined, e.g. O(n).",
+            description: "Big-O extra memory, then what it means in a few plain words, e.g. O(n): remembers up to one entry per number.",
             allowedValues: []
         ),
         AnalysisField(

@@ -12,7 +12,6 @@ const {
   IMPROVE_SYSTEM_PROMPT,
   SYSTEM_PROMPT,
   analysisJsonSchema,
-  buildAnalyzePrompt,
   buildExplainPrompt,
   buildImprovePrompt,
   pickAnalysisFields,
@@ -238,11 +237,6 @@ function requireScreenshot(req, res, next) {
   return next();
 }
 
-/** The request's own prompt (or the default), plus the viewer's optional question. */
-function analyzePromptFor(body = {}) {
-  return buildAnalyzePrompt(body.prompt || DEFAULT_ANALYZE_PROMPT, body.question);
-}
-
 /** Runs the analysis model on one image and makes the result the live analysis. */
 async function analyzeImage(mimeType, imageBytes, prompt) {
   const completion = await openai.responses.create(
@@ -266,7 +260,7 @@ app.post(
   requireScreenshot,
   requireOpenAI,
   jsonRoute("Failed to analyze screenshot.", async (req, res) => {
-    res.json(await analyzeImage(req.file.mimetype, req.file.buffer, analyzePromptFor(req.body)));
+    res.json(await analyzeImage(req.file.mimetype, req.file.buffer, req.body.prompt || DEFAULT_ANALYZE_PROMPT));
   }),
 );
 
@@ -275,14 +269,13 @@ app.post(
   "/api/analyze-screen",
   requireViewerToken,
   requireOpenAI,
-  express.json(),
   jsonRoute("Failed to analyze the shared screen.", async (req, res) => {
     // 503, not 400: right after a server restart the viewer can reconnect before the Mac's next frame
     // arrives, so the viewer retries this (see public/request-retry.js) instead of failing at once.
     if (!latestFrame) {
       return res.status(503).json({ error: NO_SHARED_SCREEN_MESSAGE });
     }
-    return res.json(await analyzeImage(FRAME_MIME_TYPE, latestFrame, analyzePromptFor(req.body)));
+    return res.json(await analyzeImage(FRAME_MIME_TYPE, latestFrame, DEFAULT_ANALYZE_PROMPT));
   }),
 );
 
