@@ -68,31 +68,116 @@ input[type="text"] {
   display: none !important;
 }
 
-/* Phone viewer (with .app): no header, compact spacing. */
+/* Phone viewer: readable at a glance, light or dark to match the phone. The answer is the biggest text,
+   the main button the only colored one, and secondary lines (status, labels) stay small and grey.
+   Sizes are in rem of the root font, which on iPhone follows the Settings text size (Dynamic Type). */
+.viewer-page {
+  font: 17px/1.5 system-ui, sans-serif;
+  /* Safari only; other browsers ignore it and keep the line above. */
+  font: -apple-system-body;
+  --text: #111;
+  --muted: #5f6368;
+  --background: #fff;
+  --line: #e2e2e2;
+  --button: #f1f3f4;
+  --accent: #0a66d8;
+  --accent-text: #fff;
+  --danger: #b00020;
+  --danger-background: #fdecee;
+  background: var(--background);
+  color: var(--text);
+  -webkit-text-size-adjust: 100%;
+}
+
+@media (prefers-color-scheme: dark) {
+  .viewer-page {
+    /* Off-white, not pure white, so text does not glare on the dark background. */
+    --text: #e8e8e8;
+    --muted: #a8adb3;
+    --background: #121212;
+    --line: #2e2e2e;
+    --button: #262626;
+    --accent: #4c9bff;
+    --accent-text: #0b1220;
+    --danger: #ff8a80;
+    --danger-background: #3a1416;
+  }
+}
+
+.viewer-page body {
+  margin: 0;
+}
+
 .viewer {
-  padding: 8px 12px 24px;
-  font-family: -apple-system, system-ui, Arial, sans-serif;
+  padding: 8px 12px 32px;
+  font-family: -apple-system, system-ui, sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.viewer .muted {
+  color: var(--muted);
 }
 
 .small {
-  font-size: 13px;
-  margin-top: 4px;
+  font-size: 0.82rem;
+  margin-top: 6px;
 }
 
+.viewer .connection-status {
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--danger-background);
+  color: var(--danger);
+}
+
+.viewer .live-screen {
+  border-color: var(--line);
+}
+
+.viewer button {
+  min-height: 48px;
+  font-size: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--button);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.viewer button.primary {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 1.06rem;
+}
+
+.viewer button:disabled {
+  opacity: 0.55;
+}
+
+/* The one line to read first. */
 .viewer #summary {
-  margin-top: 16px;
+  margin-top: 24px;
+  font-size: 1.18rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.viewer #complexity {
+  margin-top: 8px;
+  font-size: 0.94rem;
 }
 
 /* Editor look (VS Code dark): the gutter stays put while long lines scroll sideways, so indentation stays readable. */
 .code-block {
   display: flex;
-  margin: 12px 0 4px;
+  margin: 14px 0 4px;
   background: #1e1e1e;
   border-radius: 8px;
   overflow: hidden;
-  font: 13px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  /* Keeps iOS from enlarging the code text in landscape. */
-  -webkit-text-size-adjust: 100%;
+  font: 0.82rem/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
 .code-block pre {
@@ -102,7 +187,7 @@ input[type="text"] {
 
 .code-gutter {
   padding: 12px 10px 12px 12px;
-  color: #858585;
+  color: #9a9a9a;
   text-align: right;
   border-right: 1px solid #333;
   user-select: none;
@@ -133,20 +218,20 @@ input[type="text"] {
 }
 
 .viewer h3 {
-  margin: 16px 0 4px;
-  font-size: 16px;
+  margin: 20px 0 4px;
+  font-size: 1.06rem;
 }
 
 .viewer details {
-  border-top: 1px solid #ddd;
-  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  padding: 12px 0;
 }
 
 .viewer details:first-of-type {
-  margin-top: 12px;
+  margin-top: 16px;
 }
 
 .viewer summary {
   cursor: pointer;
-  font-weight: bold;
+  font-weight: 600;
 }
