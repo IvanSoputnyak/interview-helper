@@ -11,6 +11,7 @@ const liveStatusEl = document.getElementById("liveStatus");
 const analyzeScreenBtn = document.getElementById("analyzeScreenBtn");
 const analyzeStatusEl = document.getElementById("analyzeStatus");
 const improveBtn = document.getElementById("improveBtn");
+const clearBtn = document.getElementById("clearBtn");
 const explainBtn = document.getElementById("explainBtn");
 const actionStatusEl = document.getElementById("actionStatus");
 const explainedCardEl = document.getElementById("explainedCard");
@@ -44,6 +45,28 @@ function renderCode(rawCode) {
   }
 }
 
+/** Draws the Explain reply like the code block: step numbers in the gutter, labels in color, text wrapping. */
+function renderExplanation(explanation) {
+  const rows = ExplainFormat.explanationRows(explanation).map((row) => {
+    const rowEl = document.createElement("div");
+    rowEl.className = `explain-row is-${row.kind}`;
+    const gutterEl = document.createElement("span");
+    gutterEl.className = "explain-gutter";
+    gutterEl.textContent = row.kind === "step" ? String(row.number) : "";
+    const textEl = document.createElement("span");
+    if (row.kind === "label") {
+      const labelEl = document.createElement("strong");
+      labelEl.className = "explain-label";
+      labelEl.textContent = row.label;
+      textEl.append(labelEl, " ");
+    }
+    textEl.append(row.text);
+    rowEl.append(gutterEl, textEl);
+    return rowEl;
+  });
+  explainedEl.replaceChildren(...rows);
+}
+
 /** "Time: …" and "Memory: …" on their own lines, leaving out whichever the model left empty. */
 function complexityLine({ timeComplexity, spaceComplexity }) {
   return [timeComplexity && `Time: ${timeComplexity}`, spaceComplexity && `Memory: ${spaceComplexity}`]
@@ -67,6 +90,7 @@ function renderAnalysis(data) {
   for (const detailEl of detailEls) {
     const value = data[detailEl.dataset.field] || "";
     detailEl.hidden = !value;
+    detailEl.querySelector("summary").textContent = SectionTitles.sectionTitle(data.detectedContentType, detailEl.dataset.field);
     detailEl.querySelector(".result-block").textContent = value;
   }
 }
@@ -207,10 +231,21 @@ function explainSolution() {
     if (payload.id !== shownAnalysisId) {
       return "Explained an older capture; tap again for the current one.";
     }
-    explainedEl.textContent = payload.explanation;
+    renderExplanation(payload.explanation);
     explainedCardEl.hidden = false;
     explainedCardEl.scrollIntoView({ behavior: "smooth" });
     return "Explained below.";
+  });
+}
+
+/** Removes the answer on every phone (the server pushes the empty state to the others over the socket). */
+function clearAnswer() {
+  const action = { button: clearBtn, statusEl: actionStatusEl, busyText: "Clearing…", route: "/api/clear" };
+  return runAction(action, (payload) => {
+    renderAnalysis(payload);
+    // "Done." under Capture & analyze described the answer that is now gone.
+    analyzeStatusEl.textContent = "";
+    return "";
   });
 }
 
@@ -242,6 +277,7 @@ function connect() {
   analyzeScreenBtn.addEventListener("click", analyzeScreen);
   improveBtn.addEventListener("click", improveSolution);
   explainBtn.addEventListener("click", explainSolution);
+  clearBtn.addEventListener("click", clearAnswer);
 }
 
 connect();

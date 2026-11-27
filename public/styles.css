@@ -208,6 +208,49 @@ input[type="text"] {
   overflow-x: visible;
 }
 
+/* Explain: the code block's dark panel and gutter, but in the reading font and wrapping instead of scrolling. */
+.explain-block {
+  margin: 8px 0 4px;
+  padding: 10px 14px 10px 0;
+  background: #1e1e1e;
+  border-radius: 8px;
+  color: #d4d4d4;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.explain-row {
+  display: grid;
+  grid-template-columns: 2.4em 1fr;
+  column-gap: 12px;
+  overflow-wrap: anywhere;
+}
+
+/* Spacing sits inside the text cell, so the gutter (stretched to the row's height) draws one unbroken line. */
+.explain-row > :last-child {
+  padding: 3px 0;
+}
+
+.explain-gutter {
+  padding: 3px 10px 0 0;
+  color: #9a9a9a;
+  text-align: right;
+  border-right: 1px solid #333;
+  font: 0.82rem/1.85 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  user-select: none;
+}
+
+/* Same blue as keywords in the code block (vs2015 theme). */
+.explain-label {
+  color: #569cd6;
+  font-weight: 700;
+}
+
+/* A gap before Answer and Watch out sets the steps apart from the conclusion. */
+.is-step + .is-label > :last-child {
+  padding-top: 11px;
+}
+
 .button-row {
   display: flex;
   gap: 8px;

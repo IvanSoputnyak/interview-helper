@@ -12,7 +12,9 @@ const {
   pickAnalysisFields,
   resolveModel,
   stripCodeFences,
+  stripInlineCodeMarks,
   withOriginalQuestionIfMissing,
+  withoutInlineCodeMarks,
 } = require("../lib/analysis-schema");
 const improveFixture = require("../shared/fixtures/improve-prompt.json");
 const { SWIFT_PATH, loadContract, renderSwift } = require("../scripts/generate-swift-contract");
@@ -60,6 +62,9 @@ test("every schema property carries a non-empty description", () => {
 test("detectedContentType is restricted to the contract enum", () => {
   assert.deepEqual(analysisJsonSchema.properties.detectedContentType.enum, [
     "coding_problem",
+    "code_review",
+    "code_fix",
+    "code_task",
     "system_design",
     "multiple_choice",
     "other",
@@ -125,6 +130,31 @@ test("withOriginalQuestionIfMissing keeps the model question when present", () =
 
 test("withOriginalQuestionIfMissing restores the original question when empty", () => {
   assert.equal(withOriginalQuestionIfMissing({ question: "" }, { question: "Old" }).question, "Old");
+});
+
+test("stripInlineCodeMarks drops backticks around code names and keeps the names", () => {
+  assert.equal(stripInlineCodeMarks("`paginate`: use `(page - 1) * size`."), "paginate: use (page - 1) * size.");
+});
+
+test("stripInlineCodeMarks leaves text without backticks unchanged", () => {
+  assert.equal(stripInlineCodeMarks("Use a set."), "Use a set.");
+});
+
+test("stripInlineCodeMarks leaves a lone backtick alone", () => {
+  assert.equal(stripInlineCodeMarks("press ` to open"), "press ` to open");
+});
+
+test("stripInlineCodeMarks does not join backticks across lines", () => {
+  assert.equal(stripInlineCodeMarks("a ` b\nc ` d"), "a ` b\nc ` d");
+});
+
+test("stripInlineCodeMarks handles an empty string", () => {
+  assert.equal(stripInlineCodeMarks(""), "");
+});
+
+test("withoutInlineCodeMarks cleans text fields but never touches the code", () => {
+  const fields = withoutInlineCodeMarks({ summary: "Fix `paginate`.", codeSnippet: "s = `echo hi`" });
+  assert.deepEqual(fields, { summary: "Fix paginate.", codeSnippet: "s = `echo hi`" });
 });
 
 test("stripCodeFences removes a fence pair with a language tag", () => {

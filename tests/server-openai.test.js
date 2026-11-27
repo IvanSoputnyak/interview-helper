@@ -166,6 +166,12 @@ test("analyze sends the contract default model when OPENAI_MODEL is a retired de
   assert.equal(fakeRequests.at(-1).model, contract.defaultModel);
 });
 
+test("every model request uses low reasoning effort by default", async () => {
+  replyWith(ANALYZE, analysisJSON({ summary: "s", question: "Two sum" }));
+  await analyze();
+  assert.deepEqual(fakeRequests.at(-1).reasoning, { effort: "low" });
+});
+
 test("analyze sends the contract system prompt", async () => {
   replyWith(ANALYZE, analysisJSON({ summary: "s", question: "Two sum" }));
   await analyze();
@@ -270,6 +276,40 @@ test("improve finishing after a newer analyze does not replace the live analysis
   assert.equal((await latest()).id, newer.id);
 });
 
+test("clear removes the live analysis", async () => {
+  replyWith(ANALYZE, analysisJSON({ question: "Two sum" }));
+  await analyze();
+
+  await postJSON("/api/clear");
+
+  assert.equal((await latest()).id, null);
+});
+
+test("clear pushes the empty state to connected viewers", async () => {
+  replyWith(ANALYZE, analysisJSON({ question: "Two sum" }));
+  await analyze();
+  const client = createPollingClient(baseUrl);
+  const viewer = await client.connect();
+
+  await postJSON("/api/clear");
+
+  const pushed = (await client.poll(viewer.sid)).find((packet) => packet.includes("analysis:update"));
+  assert.equal(JSON.parse(pushed.slice(pushed.indexOf("[")))[1].id, null);
+});
+
+test("improve finishing after clear does not bring the answer back", async () => {
+  replyWith(ANALYZE, analysisJSON({ question: "Two sum" }));
+  await analyze();
+  replyWith(IMPROVE, analysisJSON({ question: "Two sum", codeSnippet: "improved" }), { delayMs: 300 });
+  const pendingImprove = improve();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  await postJSON("/api/clear");
+  await pendingImprove;
+
+  assert.equal((await latest()).id, null);
+});
+
 test("analyze sends exactly the default prompt", async () => {
   replyWith(ANALYZE, analysisJSON({ question: "Two sum" }));
   await analyze();
@@ -329,6 +369,20 @@ test("explain returns the trimmed explanation with the analysis id", async () =>
   replyWith(EXPLAIN, "  1. The idea: use a map.  \n");
   const { body } = await explain();
   assert.deepEqual(body, { id: analyzed.id, explanation: "1. The idea: use a map." });
+});
+
+test("explain drops backticks around code names", async () => {
+  replyWith(ANALYZE, analysisJSON({ question: "Two sum" }));
+  await analyze();
+  replyWith(EXPLAIN, "Idea: `seen` remembers numbers.");
+  const { body } = await explain();
+  assert.equal(body.explanation, "Idea: seen remembers numbers.");
+});
+
+test("analyze drops backticks in text fields and keeps the code as written", async () => {
+  replyWith(ANALYZE, analysisJSON({ summary: "Use `seen`.", codeSnippet: "x = `y`" }));
+  const { body } = await analyze();
+  assert.deepEqual([body.summary, body.codeSnippet], ["Use seen.", "x = `y`"]);
 });
 
 test("explain answers 502 when the model returns empty text", async () => {

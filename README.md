@@ -9,7 +9,7 @@ Standalone Mac App Store–ready menu bar app: capture a coding question, analyz
 - Direct OpenAI vision API (no developer-hosted backend).
 - API key stored in Keychain; minimal Q&A history on disk (question, answer code, id, timestamp), viewable via menu **Show history** or the **History** button.
 - **Auto-reconnect**: network drops and OpenAI 408/429/5xx are retried up to 3× (1s/2s/4s backoff); timeouts (client or 504) are retried only once, since a slow reasoning answer already waited the full 180s; when offline, waits up to 30s for the network first. Progress shows in the menu status and on the Improve / Explain buttons. Bad keys, other 4xx, and `insufficient_quota` fail immediately.
-- **Results window**: **Explain simply** adds a beginner walkthrough under the solution (idea + analogy, traced example, why not brute force, pitfalls; cached per answer, toggle Hide/Show); **Hide solution** collapses the answer to just the question (stays hidden for new captures until shown again); **Improve** reviews and fixes the solution.
+- **Results window**: **Explain simply** adds a beginner walkthrough under the solution (idea with an everyday comparison, a small example in short steps, the answer, one thing to watch out for; cached per answer, toggle Hide/Show); **Hide solution** collapses the answer to just the question (stays hidden for new captures until shown again); **Improve** reviews and fixes the solution.
 - **Settings**: OpenAI API key; **Model** (blank = default from `shared/analysis-contract.json`); **Reasoning effort** Default (model decides) / Low / Medium / High, applied to analyze, improve and explain; **History size** (Q&A rows kept and shown in History, 1–500, default 25; blank or invalid means 25; lowering it hides older rows at once and removes them from disk on the next capture).
 - **Analysis prompt**: built-in default; optional custom prompt via menu.
 - **Prompts + output schema live in one file**, [`shared/analysis-contract.json`](shared/analysis-contract.json), shared by the app and the Node server. After editing it run `make contract` (regenerates `AnalysisContract.generated.swift`); `make test` fails while the Swift copy is stale.
@@ -91,9 +91,10 @@ Mac (share page) ──about 1 frame/sec──▶ server on the Mac ──▶ ph
 ### On the phone/tablet
 
 - **Live screen**: the page opens on the Mac's screen, refreshed about once a second. The line under it says `Live · <time>` with the time of the last frame; if that time stops changing, the share has paused (see troubleshooting). Pinch to zoom in on small text.
-- **Capture & analyze**: sends the newest frame to the AI. The answer appears below: a short summary, the code (numbered and colored like in an editor; swipe sideways on long lines), and time/memory, all in plain words. **Steps**, **Why this works** and **Example, step by step** are folded away; tap one to open it.
-- **Explain**: a beginner-friendly walkthrough of the current answer (the idea with an everyday analogy, a small example traced step by step, why the slow approach is worse, common mistakes). It appears under **Explained simply**.
+- **Capture & analyze**: sends the newest frame to the AI, which works out what the screen asks for and does that: solve a coding challenge, review code, fix a bug or error message, explain or refactor code, write tests or a query, or answer a design or multiple-choice question. The answer appears below: a short summary (the answer or verdict), the code (numbered and colored like in an editor; swipe sideways on long lines), and time/memory when speed matters, all in plain words. Details are folded away and named for the task, for example **Steps** and **Why this works** for a challenge, **Issues** and **Why it matters** for a code review; tap one to open it.
+- **Explain**: a short beginner walkthrough of the current answer in a box like the code block: **Idea**, **Example**, numbered steps, **Answer** and **Watch out**. It appears under **Explained simply**.
 - **Improve**: asks the AI to re-check the answer for bugs, missed edge cases and speed, and replaces it with the improved version.
+- **Clear**: removes the current answer from every phone, leaving just the live screen and **Capture & analyze**.
 
 Several phones or tablets can watch at once; a new answer shows on all of them.
 
@@ -137,7 +138,8 @@ You don't need to reload anything; both pages recover on their own.
 
 - `PORT` - server port (`80` default, so the phone opens plain `h.local`)
 - `OPENAI_API_KEY` - OpenAI API key
-- `OPENAI_MODEL` - model name (default: `defaultModel` in `shared/analysis-contract.json`, currently `gpt-6.1-sol`)
+- `OPENAI_MODEL` - model name (default: `defaultModel` in `shared/analysis-contract.json`, currently `gpt-6-luna`)
+- `OPENAI_REASONING_EFFORT` - `low` (default: about twice as fast as the model default, same correctness in our tests), `medium` or `high` (slower, more careful)
 - `ANALYZE_PROMPT` - optional server-side default prompt used when a client omits `prompt`
 
 ## Commands
@@ -148,7 +150,7 @@ You don't need to reload anything; both pages recover on their own.
 | `make mac-native` | `npm run mac:native` |
 | `make start` | `npm start` (`make start` also opens the share page) |
 | `make dev` | `npm run dev` |
-| `make test` | `npm test` (Node API + Swift unit tests; Swift tests build in `~/Library/Caches/InterviewHelper/swift-test`, because iCloud-synced Desktop/Documents folders tag build output and codesign then rejects the test bundle — override with `SWIFT_TEST_BUILD`) |
+| `make test` | `npm test` (Node API + Swift unit tests, all against a fake OpenAI server: the tests never see the key in `.env`, and any request to the real OpenAI API is refused, so running them costs nothing; Swift tests build in `~/Library/Caches/InterviewHelper/swift-test`, because iCloud-synced Desktop/Documents folders tag build output and codesign then rejects the test bundle — override with `SWIFT_TEST_BUILD`) |
 | `make package-mac` | `npm run package:mac` |
 
 ## Packaging, signing, notarization

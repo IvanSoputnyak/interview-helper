@@ -32,15 +32,17 @@
         <div class="button-row">
           <button id="explainBtn">Explain</button>
           <button id="improveBtn">Improve</button>
+          <button id="clearBtn">Clear</button>
         </div>
         <div id="actionStatus" class="muted small"></div>
 
         <div id="explainedCard" hidden>
           <h3>Explained simply</h3>
-          <div id="explained" class="result-block"></div>
+          <!-- Rows drawn like the code block: numbered steps in the gutter, colored labels (see renderExplanation). -->
+          <div id="explained" class="explain-block"></div>
         </div>
 
-        <!-- Closed by default; each one is hidden when the model left that field empty. -->
+        <!-- Closed by default; each one is hidden when the model left that field empty. Titles follow the task type (section-titles.js). -->
         <details data-field="solution"><summary>Steps</summary><div class="result-block"></div></details>
         <details data-field="algorithmWhy"><summary>Why this works</summary><div class="result-block"></div></details>
         <details data-field="explanation"><summary>Example, step by step</summary><div class="result-block"></div></details>
@@ -50,6 +52,8 @@
     <script src="/socket.io/socket.io.js"></script>
     <script src="/vendor/highlight/highlight.min.js"></script>
     <script src="/request-retry.js"></script>
+    <script src="/explain-format.js"></script>
+    <script src="/section-titles.js"></script>
     <script src="/viewer.js"></script>
   </body>
 </html>

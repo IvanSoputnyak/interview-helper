@@ -18,7 +18,7 @@ struct AnalysisSchemaContractTests {
 
     @Test func test_schema_detectedContentType_isRestrictedToContractEnum() throws {
         let allowed = try property("detectedContentType")["enum"] as? [String]
-        #expect(allowed == ["coding_problem", "system_design", "multiple_choice", "other"])
+        #expect(allowed == ["coding_problem", "code_review", "code_fix", "code_task", "system_design", "multiple_choice", "other"])
     }
 
     @Test func test_schema_freeTextProperty_hasNoEnum() throws {

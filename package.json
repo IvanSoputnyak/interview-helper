@@ -11,7 +11,7 @@
     "mac:app": "bash scripts/assemble-mac-app.sh release && open dist/InterviewHelperMac.app",
     "mac:app:debug": "bash scripts/assemble-mac-app.sh debug && open dist/InterviewHelperMac.app",
     "test": "npm run test:node && npm run test:swift",
-    "test:node": "node --test tests/*.test.js",
+    "test:node": "node --test --import ./tests/helpers/block-real-openai.js tests/*.test.js",
     "test:swift": "swift test --package-path macos-native --scratch-path \"${SWIFT_TEST_BUILD:-$HOME/Library/Caches/InterviewHelper/swift-test}\"",
     "package:mac": "bash scripts/package-mac.sh",
     "mac:icon": "bash scripts/build-mac-icon.sh macos-native/Resources/AppIcon.icns"

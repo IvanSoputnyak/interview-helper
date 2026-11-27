@@ -118,6 +118,11 @@ test("explain returns a clear error when the api key is missing", async () => {
   assert.match((await response.json()).error, /OPENAI_API_KEY is missing/);
 });
 
+test("clear with nothing on screen returns the empty state", async () => {
+  const response = await fetch(`${baseUrl}/api/clear`, { method: "POST" });
+  assert.deepEqual([response.status, (await response.json()).id], [200, null]);
+});
+
 test("the share page opens on this Mac", async () => {
   assert.equal((await fetch(`${baseUrl}/broadcast`)).status, 200);
 });

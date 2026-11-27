@@ -18,7 +18,9 @@ const {
   pickAnalysisFields,
   resolveModel,
   stripCodeFences,
+  stripInlineCodeMarks,
   withOriginalQuestionIfMissing,
+  withoutInlineCodeMarks,
 } = require("./lib/analysis-schema");
 const {
   PHONE_HOST_NAME,
@@ -30,6 +32,8 @@ const {
 
 const DEFAULT_PORT = Number(process.env.PORT) || 80;
 const MODEL = resolveModel(process.env.OPENAI_MODEL);
+/** "low" answered about twice as fast as the model default with the same correctness in our screenshot benchmarks. */
+const REASONING_EFFORT = process.env.OPENAI_REASONING_EFFORT || "low";
 const MAX_FILE_SIZE_BYTES = 8 * 1024 * 1024;
 /** One JPEG frame of the screen shared from /broadcast (a 2048px frame is usually well under 1 MB). */
 const MAX_FRAME_BYTES = 3 * 1024 * 1024;
@@ -67,7 +71,9 @@ const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   : null;
 
-let latestAnalysis = { id: null, createdAt: null, ...pickAnalysisFields({ summary: "No analysis yet." }) };
+/** The state before any capture and after Clear: it has no id, so the phone hides the answer. */
+const NO_ANALYSIS = Object.freeze({ id: null, createdAt: null, ...pickAnalysisFields({ summary: "No analysis yet." }) });
+let latestAnalysis = NO_ANALYSIS;
 /** Latest JPEG frame of the shared screen, or null while nothing is being shared. */
 let latestFrame = null;
 /** Socket that sent `latestFrame`; when it disconnects (share tab closed) the frame is dropped. */
@@ -83,7 +89,7 @@ function requireThisMac(req, res, next) {
 
 /** Every schema field as a string; `question` falls back to `summary` (matches ScreenAnalysis.fromParsedJSON). */
 function normalizeAnalysisShape(parsed) {
-  const fields = pickAnalysisFields(parsed);
+  const fields = withoutInlineCodeMarks(pickAnalysisFields(parsed));
   return {
     ...fields,
     summary: fields.summary || "No summary",
@@ -115,6 +121,7 @@ function commitAnalysis(analysis) {
 function modelRequest(system, content, schemaName) {
   const request = {
     model: MODEL,
+    reasoning: { effort: REASONING_EFFORT },
     input: [
       { role: "system", content: system },
       { role: "user", content },
@@ -299,6 +306,15 @@ app.post(
   }),
 );
 
+/**
+ * Clear: forgets the live analysis on every viewer, so a reconnect does not bring it back. An Improve still
+ * running keeps it gone too: it only replaces the live analysis when that is still the one it improved.
+ */
+app.post("/api/clear", (_req, res) => {
+  commitAnalysis(NO_ANALYSIS);
+  res.json(NO_ANALYSIS);
+});
+
 /** Beginner walkthrough of the live analysis, as plain text (same prompt as the Mac app's "Explain simply"). */
 app.post(
   "/api/explain",
@@ -311,7 +327,7 @@ app.post(
     const completion = await openai.responses.create(
       modelRequest(EXPLAIN_SYSTEM_PROMPT, [{ type: "input_text", text: buildExplainPrompt(current) }]),
     );
-    const explanation = (completion.output_text || "").trim();
+    const explanation = stripInlineCodeMarks((completion.output_text || "").trim());
     if (!explanation) {
       return res.status(502).json({ error: "The model returned an empty explanation. Try again." });
     }

@@ -8,24 +8,24 @@ struct AnalysisField: Sendable, Equatable {
 }
 
 enum AnalysisContract {
-    static let defaultModel = "gpt-6.1-sol"
+    static let defaultModel = "gpt-6-luna"
 
     /// Former defaults that Settings saved verbatim; treated as "use the current default".
     static let retiredDefaultModels: Set<String> = [
         "gpt-4.1-mini",
     ]
 
-    static let systemPrompt = "You are an expert competitive programmer and technical interviewer. You read coding problems from screenshots of a whole screen and return correct, efficient solutions. Read only what is really on screen; never guess numbers or rules you cannot read. Write for a beginner with no computer science background: plain everyday words, short sentences, no jargon. If a technical word is needed, say what it means in a few words."
+    static let systemPrompt = "You are an expert software engineer and technical interviewer. You read screenshots of a whole screen and do the task shown: solve coding challenges, review or fix code, explain code, write code or queries, and answer technical questions, with correct, efficient results. Read only what is really on screen; never guess numbers or rules you cannot read. Write for a beginner with no computer science background: plain everyday words, short sentences, no jargon. If a technical word is needed, say what it means in a few words."
 
-    static let defaultAnalyzePrompt = "Solve the coding interview problem in this screenshot.\n- The screenshot may show the whole screen. Use only the problem statement, its examples and constraints, and the code editor. Ignore browser tabs, menus, notifications, chat and other windows.\n- If several problems are visible, solve the one that is open or most prominent.\n- Use the programming language and the exact function or class signature shown in the editor; if none is visible, use Python.\n- Give an efficient solution: optimal or near-optimal; brute force only if it is optimal; not over-engineered.\n- Respect the constraints shown (input sizes, value ranges) and handle edge cases.\n- Before answering, run your code in your head on every example shown. If any result differs from the expected output, fix the code first.\n- If the problem is cut off or some text is unreadable, solve what is visible and say what is missing in summary.\n- If it is not a coding problem, set detectedContentType accordingly, answer briefly in summary, and leave fields that do not apply empty.\n- Keep every text field short and simple enough for a beginner to follow."
+    static let defaultAnalyzePrompt = "Work out what task this screenshot asks for, then do exactly that task.\n- The screenshot may show the whole screen. Use only the task, its examples and constraints, and the code. Ignore browser tabs, menus, notifications, chat and other windows.\n- If several tasks are visible, do the one that is open or most prominent.\n- The task can be anything code-related: solve a coding challenge, review code, fix a bug or an error message, explain what code does, refactor, write tests or a query, or answer a design or multiple-choice question. Set detectedContentType to match.\n- Use the programming language and the exact names and signatures shown; if none are visible, use Python.\n- Code you write should be efficient (optimal or near-optimal, not over-engineered), respect the constraints shown (input sizes, value ranges) and handle edge cases.\n- Reviewing or fixing code: find real bugs first, then missed edge cases, then slow spots. If the code is already correct, say so in summary and keep it unchanged.\n- Before answering, run your code in your head on every example shown. If any result differs from the expected output, fix the code first.\n- If the task is cut off or some text is unreadable, do what is visible and say what is missing in summary.\n- Leave fields that do not apply to the task empty (for example no code for a multiple-choice question).\n- Keep every text field short and simple enough for a beginner to follow.\n- Text fields are plain text: no markdown, no backticks around code names.\n- When you name a technique or data structure (for example a Fenwick tree or a hash map), say in a few plain words what it is."
 
-    static let improveSystemPrompt = "You are a senior technical interviewer reviewing a candidate's solution for correctness, edge cases, and complexity. Be concise and use simple words."
+    static let improveSystemPrompt = "You are a senior engineer and technical interviewer checking an answer to a coding task for correctness, edge cases, and complexity. Be concise and use simple words."
 
-    static let improveInstructions = "Review this interview solution.\n- First check correctness against the problem, its constraints, and edge cases.\n- If it is already correct and optimal, keep the code unchanged and say so in summary.\n- Otherwise fix, in this order: bugs, missed edge cases, then time/space complexity.\n- Keep the same programming language and function signature."
+    static let improveInstructions = "Check this answer to the task.\n- First check correctness against the task, its constraints, and edge cases.\n- If it is already correct and optimal, keep the code unchanged and say so in summary.\n- Otherwise fix, in this order: bugs, missed edge cases, then time/space complexity.\n- Keep the same programming language and the names and signatures shown on screen."
 
-    static let explainSystemPrompt = "You are a patient tutor explaining coding interview solutions to a beginner. Assume no prior knowledge of the algorithm. Use plain, everyday words."
+    static let explainSystemPrompt = "You are a patient tutor explaining answers to coding tasks to a beginner. Assume no prior knowledge. Use plain, everyday words."
 
-    static let explainInstructions = "Explain this solution so a beginner fully understands it.\n1. The idea: say what the code does in plain words, then give one everyday analogy.\n2. Walk through: pick one small input and trace the code step by step, showing the value of each variable after every step.\n3. Why not brute force: describe the obvious slow approach and show with concrete numbers (for the stated input size) why it is too slow.\n4. Watch out: list the common mistakes and the edge cases this code handles.\nUse short sentences. Define any technical term the first time you use it.\nPlain text only: no markdown, no code fences. Use the four numbered section titles above."
+    static let explainInstructions = "Explain this answer to a complete beginner in under 120 words, using exactly this layout, one item per line:\nIdea: the main point of the answer, in one sentence with an everyday comparison.\nExample: one small input or concrete case.\n- one short step per line, 3 to 6 steps: what the code looks at and what it remembers (for a review or fix: where the original goes wrong and what the fix changes).\nAnswer: the result for that example.\nWatch out: one common mistake or edge case.\nSay what any technical word means in a few plain words. Plain text only: no markdown, no code fences, no blank lines."
 
     /// Fields of the current answer given to the model as context for improve / explain.
     static let solutionContextKeys = [
@@ -42,49 +42,52 @@ enum AnalysisContract {
     static let fields = [
         AnalysisField(
             key: "summary",
-            description: "One line in plain words: what the code does and the key idea. If the problem is cut off or unclear, say what is missing.",
+            description: "One line in plain words: the answer or verdict. For a challenge, what the code does and the key idea; for a review, what is wrong (e.g. 2 bugs, 1 slow spot); for a fix, the cause. If the task is cut off or unclear, say what is missing.",
             allowedValues: []
         ),
         AnalysisField(
             key: "question",
-            description: "The problem statement as read from the screen, including constraints and examples if visible. Copy numbers and names exactly.",
+            description: "The task as read from the screen (problem statement, request, or error message), including constraints and examples if visible. Copy numbers and names exactly.",
             allowedValues: []
         ),
         AnalysisField(
             key: "solution",
-            description: "The approach in 2-4 short steps, in plain words.",
+            description: "2-4 short lines in plain words: the approach for a challenge; for a review or fix, one issue or change per line, naming the line or function it is in; for a design, the main parts; for multiple choice, why the other options are wrong.",
             allowedValues: []
         ),
         AnalysisField(
             key: "codeSnippet",
-            description: "Complete, runnable solution with any imports it needs, using the signature shown on screen. Formatted the standard way for the language (4-space indents in Python), with lines kept under 80 characters where natural. Raw code only: no markdown fences and no prose around it.",
+            description: "The code the task needs: the complete solution, the corrected code, or the code asked for, runnable with any imports it needs and using the names and signatures shown on screen. Empty when the task needs no code. Formatted the standard way for the language (4-space indents in Python), with lines kept under 80 characters where natural. Raw code only: no markdown fences and no prose around it.",
             allowedValues: []
         ),
         AnalysisField(
             key: "explanation",
-            description: "Take one small example input and walk through it step by step, as if explaining to a friend who has never coded: plain everyday words, one short sentence per step, saying what the code looks at and what it remembers at each step, and ending with the answer.",
+            description: "Take one small example input and walk through it step by step, as if explaining to a friend who has never coded: plain everyday words, one short sentence per step, saying what the code looks at and what it remembers at each step, and ending with the answer. For a review or fix, show where the original code goes wrong on that input; for a design, follow one request through the parts.",
             allowedValues: []
         ),
         AnalysisField(
             key: "algorithmWhy",
-            description: "In plain words: why this idea works, and why the obvious try-everything approach would be too slow.",
+            description: "In plain words: why this idea works, and why the obvious try-everything approach would be too slow. For a review or fix: why each problem matters; for a design: the main trade-offs.",
             allowedValues: []
         ),
         AnalysisField(
             key: "timeComplexity",
-            description: "Big-O time, then what it means in a few plain words, e.g. O(n): goes through the list once.",
+            description: "Big-O time, then what it means in a few plain words, e.g. O(n): goes through the list once. Empty when speed does not matter for the task.",
             allowedValues: []
         ),
         AnalysisField(
             key: "spaceComplexity",
-            description: "Big-O extra memory, then what it means in a few plain words, e.g. O(n): remembers up to one entry per number.",
+            description: "Big-O extra memory, then what it means in a few plain words, e.g. O(n): remembers up to one entry per number. Empty when speed does not matter for the task.",
             allowedValues: []
         ),
         AnalysisField(
             key: "detectedContentType",
-            description: "What the screenshot shows.",
+            description: "The kind of task on screen: code_task covers any other code work (explain, refactor, write tests or a query).",
             allowedValues: [
                 "coding_problem",
+                "code_review",
+                "code_fix",
+                "code_task",
                 "system_design",
                 "multiple_choice",
                 "other",
