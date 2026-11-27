@@ -7,7 +7,6 @@ const http = require("http");
 const contract = require("../shared/analysis-contract.json");
 const { createPollingClient } = require("./helpers/socket-polling");
 
-const AUTH = { "x-viewer-token": "test-token" };
 const ANALYZE = "screen_analysis";
 const IMPROVE = "screen_analysis_improved";
 /** Explain asks for plain text, so its request has no text.format.name. */
@@ -83,14 +82,14 @@ async function analyze({ question } = {}) {
     form.append("question", question);
   }
   form.append("screenshot", new Blob([new Uint8Array([137, 80, 78, 71])], { type: "image/png" }), "c.png");
-  const response = await fetch(`${baseUrl}/api/analyze`, { method: "POST", headers: AUTH, body: form });
+  const response = await fetch(`${baseUrl}/api/analyze`, { method: "POST", body: form });
   return { status: response.status, body: await response.json() };
 }
 
 async function postJSON(route, payload = {}) {
   const response = await fetch(`${baseUrl}${route}`, {
     method: "POST",
-    headers: { ...AUTH, "content-type": "application/json" },
+    headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
   });
   return { status: response.status, body: await response.json() };
@@ -102,7 +101,7 @@ const explain = () => postJSON("/api/explain");
 /** Shares one frame from a broadcaster socket, as /broadcast does; returns a function that stops sharing. */
 async function shareFrame(frame) {
   const client = createPollingClient(baseUrl);
-  const { sid } = await client.connect({ token: "test-token" });
+  const { sid } = await client.connect();
   await client.emitBinary(sid, "screen:frame", frame);
   return () => client.emit(sid, "screen:stop");
 }
@@ -113,12 +112,12 @@ function userText(request) {
 }
 
 async function improve() {
-  const response = await fetch(`${baseUrl}/api/improve`, { method: "POST", headers: AUTH });
+  const response = await fetch(`${baseUrl}/api/improve`, { method: "POST" });
   return { status: response.status, body: await response.json() };
 }
 
 async function latest() {
-  return (await fetch(`${baseUrl}/api/latest`, { headers: AUTH })).json();
+  return (await fetch(`${baseUrl}/api/latest`)).json();
 }
 
 test.before(async () => {
@@ -128,7 +127,6 @@ test.before(async () => {
   process.env.OPENAI_BASE_URL = `http://127.0.0.1:${fakeOpenAI.address().port}/v1`;
   process.env.OPENAI_API_KEY = "test-key";
   process.env.OPENAI_MODEL = "gpt-4.1-mini";
-  process.env.VIEWER_TOKEN = "test-token";
   server = require("../server");
   const { port } = await server.startListening(0, "127.0.0.1");
   baseUrl = `http://127.0.0.1:${port}`;
@@ -154,7 +152,7 @@ test("analyze-screen before any frame is shared answers a retryable 503", async 
 
 test("analyze-screen before any frame is shared says how to start sharing", async () => {
   const { body } = await analyzeScreen();
-  assert.match(body.error, /broadcast/);
+  assert.match(body.error, /Start sharing/);
 });
 
 test.after(async () => {

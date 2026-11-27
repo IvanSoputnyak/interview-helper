@@ -17,7 +17,7 @@ Standalone Mac App Store–ready menu bar app: capture a coding question, analyz
 
 ### Optional backend: portable screen (not required for the Mac app)
 
-- Node server + token-protected viewer for phone/tablet on the same Wi‑Fi (`npm start`). Share the Mac's screen from `/broadcast`, watch it live on the phone, and tap **Capture & analyze** (optionally with a question about what's on screen); **Improve** and **Explain simply** work there too. The native Mac app works without it. Step-by-step: [Portable screen: how to use it](#portable-screen-how-to-use-it).
+- Node server + phone/tablet viewer on the same Wi‑Fi (`make start`, then open `h.local` on the phone). Share the Mac's screen from `/broadcast`, watch it live on the phone, and tap **Capture & analyze**; **Improve** and **Explain** work there too. The native Mac app works without it. Step-by-step: [Portable screen: how to use it](#portable-screen-how-to-use-it).
 
 ## Quick start (Makefile)
 
@@ -34,7 +34,7 @@ Optional backend + viewer:
 
 ```bash
 make env && make install
-# Edit .env: OPENAI_API_KEY, VIEWER_TOKEN
+# Edit .env: OPENAI_API_KEY
 make start
 ```
 
@@ -45,9 +45,7 @@ Run `make` or `make help` for the full list.
 
 1. `npm install` (or `make install`)
 2. `cp .env.example .env` (or `make env`)
-3. Set at least:
-   - `OPENAI_API_KEY`
-   - `VIEWER_TOKEN` (required for secure viewer access)
+3. Set `OPENAI_API_KEY`.
 4. Run the backend: `npm start` or `make start` (the native app is independent; see Quick start).
 
 ### “I don’t see the app”
@@ -70,10 +68,7 @@ Mac (share page) ──about 1 frame/sec──▶ server on the Mac ──▶ ph
    ```bash
    make env && make install
    ```
-2. Open `.env` in a text editor and set:
-   - `OPENAI_API_KEY=sk-…` (your OpenAI key)
-   - `VIEWER_TOKEN=` any long password you choose. Set it so the links stay the same every time; if it is empty, a new random token is made on every start and old links stop working.
-3. Find the Mac's network name: **System Settings → General → Sharing → Local hostname** (for example `Johns-MacBook.local`), or run `scutil --get LocalHostName` in Terminal and add `.local`.
+2. Open `.env` in a text editor and set `OPENAI_API_KEY=sk-…` (your OpenAI key).
 
 ### Each time you use it
 
@@ -81,16 +76,16 @@ Mac (share page) ──about 1 frame/sec──▶ server on the Mac ──▶ ph
    ```bash
    make start
    ```
-   It prints two links, for example:
+   It opens the share page (`http://localhost/broadcast`) in your browser and prints the phone address:
    ```
-   Viewer (phone/tablet): http://<this-mac>.local:3000/viewer?token=YOUR_TOKEN
-   Share this Mac's screen (open on this Mac): http://localhost:3000/broadcast?token=YOUR_TOKEN
+   Phone:  h.local   (if that does not open: http://192.168.0.185)
+   Mac:    http://localhost/broadcast   (press Start sharing there)
    ```
    The first time, macOS may ask whether `node` may accept incoming connections: choose **Allow**, or the phone can't connect.
-2. **Share the Mac's screen**: on the Mac, open the **share** link in Chrome or Safari, press **Start sharing**, pick the whole screen (or one window), and confirm.
-   - Use the link exactly as printed, starting with `http://localhost`. Browsers only allow screen sharing on `localhost`, not on the `.local` address.
+2. **Share the Mac's screen**: on the share page that opened, press **Start sharing**, pick the whole screen (or one window), and confirm.
+   - Only the Mac itself can open the share page, and only at `http://localhost`: browsers allow screen sharing there, not on `h.local`.
    - Keep that tab in its own browser window. It can sit behind other windows, but don't minimize it or switch that window to another tab: browsers slow down hidden tabs and the phone's picture would freeze.
-3. **Open the viewer on the phone/tablet**: in Safari or Chrome, open the **viewer** link, replacing `<this-mac>` with the name from setup step 3 (for example `http://Johns-MacBook.local:3000/viewer?token=YOUR_TOKEN`).
+3. **Open the viewer on the phone/tablet**: in Safari or Chrome, type `h.local`. It is the same address every time, with nothing to copy. If the browser searches for it instead, type `h.local/`.
    - Tip: on iPhone/iPad tap **Share → Add to Home Screen** so it opens like an app next time.
 
 ### On the phone/tablet
@@ -109,9 +104,9 @@ You don't need to reload anything; both pages recover on their own.
 - **Wi‑Fi drops or the server restarts**: the phone and the Mac share page show **Connection lost · reconnecting…** in red and keep trying every few seconds. Once back, the share page says **Connected** and the phone's red line simply disappears. The phone then gets the latest answer and screen again, and the Mac keeps sharing (frames pause and resume; no need to press Start sharing again).
 - **Phone was locked or you switched apps**: when you come back after 5 seconds or more, the viewer reconnects at once, so the picture is current within a second or two.
 - **Frozen picture**: if no new frame arrives for 5 seconds, the line under the screen says **No new frame for …s** and why (reconnecting, or sharing on the Mac paused), so a frozen picture is never mistaken for live.
-- **A button fails mid-request** (Capture & analyze, Improve, Explain): it's retried automatically up to 3 times (after 1, 2 and 4 seconds) and shows **Reconnecting (1/3)…**. If the phone is offline, it first shows **Waiting for connection…** and waits up to 30 seconds for the connection to return, then continues. Problems that retrying can't fix (wrong token, missing API key) are shown at once.
+- **A button fails mid-request** (Capture & analyze, Improve, Explain): it's retried automatically up to 3 times (after 1, 2 and 4 seconds) and shows **Reconnecting (1/3)…**. If the phone is offline, it first shows **Waiting for connection…** and waits up to 30 seconds for the connection to return, then continues. Problems that retrying can't fix (such as a missing API key) are shown at once.
 - **OpenAI is busy or rate-limited**: the server retries OpenAI twice by itself before reporting an error.
-- **Not recovered automatically**: if the token changes (for example `VIEWER_TOKEN` was empty and the server restarted with a new random one), open the new link. Also, if you stop the share on the Mac, press **Start sharing** again: browsers require a click to share a screen.
+- **Not recovered automatically**: if you stop the share on the Mac, press **Start sharing** again: browsers require a click to share a screen.
 
 **To stop**: press **Stop sharing** on the Mac (or the browser's own Stop button), then press `Ctrl+C` in the Terminal running the server.
 
@@ -120,16 +115,17 @@ You don't need to reload anything; both pages recover on their own.
 - The live picture only travels over your Wi‑Fi, from the Mac to the server (also on the Mac) to your phone.
 - Only the single frame you analyze goes to OpenAI.
 - When you press **Stop sharing** or close the share tab, the server forgets the last frame and the phone clears the picture, so an old screen is never shown or analyzed later.
-- Every page and request needs the token, so keep the viewer link private.
+- There is no password: anyone on the same Wi‑Fi who opens `h.local` can watch the shared screen and tap the buttons (which spends your OpenAI credit). Use it on your home Wi‑Fi, not on café or office networks.
+- Only the Mac running the server can share a screen or replace it; phones can only watch and ask.
 
 ### Troubleshooting
 
 | Problem | Fix |
 |---|---|
-| Phone says the page can't be opened | Phone and Mac must be on the same Wi‑Fi (not guest Wi‑Fi). Check the server is still running. In **System Settings → Network → Firewall**, allow `node`. If the `.local` name doesn't work (some Android phones), use the Mac's IP instead: run `ipconfig getifaddr en0` on the Mac and open `http://<that-ip>:3000/viewer?token=…`. |
-| "Invalid viewer token" | The token in the link doesn't match `VIEWER_TOKEN` in `.env` (or the server restarted with a new random token). Copy the link again from the server output. |
-| "Waiting for a shared screen…" on the phone | On the Mac, open the **share** link and press **Start sharing**. |
-| The share page says screen sharing isn't available | You opened the `.local` link on the Mac. Use the `http://localhost:3000/broadcast?token=…` link. |
+| Phone says the page can't be opened | Phone and Mac must be on the same Wi‑Fi (not guest Wi‑Fi). Check the server is still running. In **System Settings → Network → Firewall**, allow `node`. If `h.local` doesn't work (some Android phones), use the IP address `make start` prints next to it, for example `http://192.168.0.185`. |
+| "Waiting for a shared screen…" on the phone | On the Mac, press **Start sharing** on the share page that `make start` opened. |
+| The share page says screen sharing isn't available | You opened `h.local/broadcast` on the Mac. Use `http://localhost/broadcast`. |
+| "Failed to start server" with `EADDRINUSE` | Something else already uses port 80 (or the server is already running in another Terminal). Stop it, or set `PORT=3000` in `.env`; the phone address then becomes `h.local:3000`. |
 | "No new frame for …s (sharing on the Mac is paused)" | The share tab was hidden or minimized. Bring its window back on screen; frames resume within a second. |
 | "Sharing stopped on the Mac" | Sharing was stopped or the share tab was closed. Press **Start sharing** on the Mac again. |
 | "No new frame for …s (reconnecting)" or "Connection lost" that never clears | The server isn't running or the Wi‑Fi is down. Check the Terminal running `make start` and the phone's Wi‑Fi; the page reconnects by itself once it can. |
@@ -139,11 +135,10 @@ You don't need to reload anything; both pages recover on their own.
 
 ## Environment variables
 
-- `PORT` - server port (`3000` default)
+- `PORT` - server port (`80` default, so the phone opens plain `h.local`)
 - `OPENAI_API_KEY` - OpenAI API key
 - `OPENAI_MODEL` - model name (default: `defaultModel` in `shared/analysis-contract.json`, currently `gpt-6.1-sol`)
 - `ANALYZE_PROMPT` - optional server-side default prompt used when a client omits `prompt`
-- `VIEWER_TOKEN` - token required for `/viewer`, `/broadcast`, every `/api/*` route except `/api/health`, and the socket (random per start if unset)
 
 ## Commands
 
@@ -151,7 +146,7 @@ You don't need to reload anything; both pages recover on their own.
 |------|-----|
 | `make all` | (no single npm equivalent; runs env, install, swift-build) |
 | `make mac-native` | `npm run mac:native` |
-| `make start` | `npm start` |
+| `make start` | `npm start` (`make start` also opens the share page) |
 | `make dev` | `npm run dev` |
 | `make test` | `npm test` (Node API + Swift unit tests; Swift tests build in `~/Library/Caches/InterviewHelper/swift-test`, because iCloud-synced Desktop/Documents folders tag build output and codesign then rejects the test bundle — override with `SWIFT_TEST_BUILD`) |
 | `make package-mac` | `npm run package:mac` |

@@ -2,7 +2,6 @@
 // Packets in one HTTP body are separated by \x1e; a binary attachment travels as "b" + base64.
 const PACKET_SEPARATOR = "\x1e";
 const SOCKET_CONNECT = "40";
-const SOCKET_CONNECT_ERROR = "44";
 const SOCKET_EVENT = "42";
 const SOCKET_BINARY_EVENT = "451-";
 const ENGINE_CLOSE = "1";
@@ -24,11 +23,11 @@ function createPollingClient(baseUrl) {
     return (await (await fetch(pollingUrl(sid))).text()).split(PACKET_SEPARATOR);
   }
 
-  /** Opens a session, sends CONNECT (with `auth` unless undefined), and returns the session id and first packets. */
-  async function connect(auth) {
+  /** Opens a session, sends CONNECT, and returns the session id and first packets. */
+  async function connect() {
     const handshake = await (await fetch(pollingUrl())).text();
     const { sid } = JSON.parse(handshake.slice(1));
-    await send(sid, auth === undefined ? SOCKET_CONNECT : `${SOCKET_CONNECT}${JSON.stringify(auth)}`);
+    await send(sid, SOCKET_CONNECT);
     return { sid, packets: await poll(sid) };
   }
 
@@ -62,4 +61,4 @@ function binaryAttachment(packets) {
   return packet ? Buffer.from(packet.slice(BINARY_PREFIX.length), "base64") : null;
 }
 
-module.exports = { SOCKET_CONNECT, SOCKET_CONNECT_ERROR, binaryAttachment, createPollingClient, eventNames };
+module.exports = { SOCKET_CONNECT, binaryAttachment, createPollingClient, eventNames };

@@ -1,13 +1,16 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-process.env.VIEWER_TOKEN = "test-token";
 process.env.OPENAI_API_KEY = "";
 
 const { startListening, httpServer, parseModelOutput } = require("../server");
+const { lanAddresses } = require("../lib/local-network");
 
-const AUTH = { "x-viewer-token": "test-token" };
+/** This machine's Wi-Fi/Ethernet address: requests through it look like another device on the network. */
+const [LAN_ADDRESS] = lanAddresses();
+const NEEDS_LAN = { skip: !LAN_ADDRESS && "no Wi-Fi/Ethernet address on this machine" };
 let baseUrl = "";
+let phoneUrl = "";
 
 function screenshotForm(type = "image/png", bytes = [137, 80, 78, 71]) {
   const form = new FormData();
@@ -17,40 +20,26 @@ function screenshotForm(type = "image/png", bytes = [137, 80, 78, 71]) {
 }
 
 test.before(async () => {
-  const { port } = await startListening(0, "127.0.0.1");
+  const { port } = await startListening(0, "0.0.0.0");
   baseUrl = `http://127.0.0.1:${port}`;
+  phoneUrl = `http://${LAN_ADDRESS}:${port}`;
 });
 
 test.after(async () => {
   await new Promise((resolve) => httpServer.close(resolve));
 });
 
-test("viewer page rejects missing token and serves with valid token", async () => {
-  const unauthorized = await fetch(`${baseUrl}/viewer`);
-  assert.equal(unauthorized.status, 401);
-
-  const authorized = await fetch(`${baseUrl}/viewer?token=test-token`);
-  assert.equal(authorized.status, 200);
+test("the home page is the phone viewer", async () => {
+  const response = await fetch(`${baseUrl}/`);
+  assert.match(await response.text(), /Capture &amp; analyze/);
 });
 
-test("viewer.html static path cannot bypass the token check", async () => {
-  const response = await fetch(`${baseUrl}/viewer.html`);
-  assert.equal(response.status, 401);
+test("a phone on the network opens the viewer with no token", NEEDS_LAN, async () => {
+  assert.equal((await fetch(`${phoneUrl}/`)).status, 200);
 });
 
-test("wrong token of a different length is rejected", async () => {
-  const response = await fetch(`${baseUrl}/api/latest`, {
-    headers: { "x-viewer-token": "nope" },
-  });
-  assert.equal(response.status, 401);
-});
-
-test("latest rejects a missing token and returns data with the token", async () => {
-  const latestUnauthorized = await fetch(`${baseUrl}/api/latest`);
-  assert.equal(latestUnauthorized.status, 401);
-
-  const latestAuthorized = await fetch(`${baseUrl}/api/latest`, { headers: AUTH });
-  assert.equal(latestAuthorized.status, 200);
+test("latest analysis needs no token", async () => {
+  assert.equal((await fetch(`${baseUrl}/api/latest`)).status, 200);
 });
 
 test("parseModelOutput returns parsed JSON or keeps fallback fields on bad JSON", () => {
@@ -61,18 +50,9 @@ test("parseModelOutput returns parsed JSON or keeps fallback fields on bad JSON"
   assert.equal(parseModelOutput("").summary, "Could not parse model output.");
 });
 
-test("analyze without token is rejected before upload is processed", async () => {
-  const response = await fetch(`${baseUrl}/api/analyze`, {
-    method: "POST",
-    body: screenshotForm(),
-  });
-  assert.equal(response.status, 401);
-});
-
 test("analyze without api key returns 400", async () => {
   const response = await fetch(`${baseUrl}/api/analyze`, {
     method: "POST",
-    headers: AUTH,
     body: screenshotForm(),
   });
   assert.equal(response.status, 400);
@@ -83,7 +63,6 @@ test("analyze without api key returns 400", async () => {
 test("analyze rejects a missing screenshot with JSON 400", async () => {
   const response = await fetch(`${baseUrl}/api/analyze`, {
     method: "POST",
-    headers: AUTH,
     body: new FormData(),
   });
   assert.equal(response.status, 400);
@@ -93,7 +72,6 @@ test("analyze rejects a missing screenshot with JSON 400", async () => {
 test("analyze rejects non-image uploads with JSON 400", async () => {
   const response = await fetch(`${baseUrl}/api/analyze`, {
     method: "POST",
-    headers: AUTH,
     body: screenshotForm("text/html", [60, 104, 49, 62]),
   });
   assert.equal(response.status, 400);
@@ -103,44 +81,23 @@ test("analyze rejects non-image uploads with JSON 400", async () => {
 test("analyze rejects oversized uploads with JSON 413", async () => {
   const response = await fetch(`${baseUrl}/api/analyze`, {
     method: "POST",
-    headers: AUTH,
     body: screenshotForm("image/png", new Uint8Array(8 * 1024 * 1024 + 1)),
   });
   assert.equal(response.status, 413);
   assert.match((await response.json()).error, /exceeds/);
 });
 
-test("improve requires viewer token", async () => {
-  const unauthorized = await fetch(`${baseUrl}/api/improve`, { method: "POST" });
-  assert.equal(unauthorized.status, 401);
-});
-
-test("health reports status without leaking the viewer token", async () => {
+test("health reports the port the server is bound to", async () => {
   const response = await fetch(`${baseUrl}/api/health`);
-  assert.equal(response.status, 200);
   const payload = await response.json();
-  assert.equal(payload.ok, true);
-  assert.equal(payload.viewerToken, undefined);
-  assert.equal(payload.port, Number(new URL(baseUrl).port));
+  assert.deepEqual([payload.ok, payload.port], [true, Number(new URL(baseUrl).port)]);
 });
 
 test("improve returns clear error when api key missing", async () => {
-  const response = await fetch(`${baseUrl}/api/improve`, {
-    method: "POST",
-    headers: AUTH,
-  });
+  const response = await fetch(`${baseUrl}/api/improve`, { method: "POST" });
   assert.equal(response.status, 400);
   const payload = await response.json();
   assert.match(payload.error, /OPENAI_API_KEY is missing/i);
-});
-
-test("broadcast page rejects a missing token and serves with a valid token", async () => {
-  assert.equal((await fetch(`${baseUrl}/broadcast`)).status, 401);
-  assert.equal((await fetch(`${baseUrl}/broadcast`, { headers: AUTH })).status, 200);
-});
-
-test("broadcast.html static path cannot bypass the token check", async () => {
-  assert.equal((await fetch(`${baseUrl}/broadcast.html`)).status, 401);
 });
 
 test("the viewer's syntax highlighter and its theme are served locally", async () => {
@@ -149,24 +106,31 @@ test("the viewer's syntax highlighter and its theme are served locally", async (
   assert.deepEqual([script.status, theme.status], [200, 200]);
 });
 
-test("analyze-screen requires the viewer token", async () => {
-  const response = await fetch(`${baseUrl}/api/analyze-screen`, { method: "POST" });
-  assert.equal(response.status, 401);
-});
-
 test("analyze-screen returns a clear error when the api key is missing", async () => {
-  const response = await fetch(`${baseUrl}/api/analyze-screen`, { method: "POST", headers: AUTH });
+  const response = await fetch(`${baseUrl}/api/analyze-screen`, { method: "POST" });
   assert.equal(response.status, 400);
   assert.match((await response.json()).error, /OPENAI_API_KEY is missing/);
-});
-
-test("explain requires the viewer token", async () => {
-  const response = await fetch(`${baseUrl}/api/explain`, { method: "POST" });
-  assert.equal(response.status, 401);
 });
 
 test("explain returns a clear error when the api key is missing", async () => {
-  const response = await fetch(`${baseUrl}/api/explain`, { method: "POST", headers: AUTH });
+  const response = await fetch(`${baseUrl}/api/explain`, { method: "POST" });
   assert.equal(response.status, 400);
   assert.match((await response.json()).error, /OPENAI_API_KEY is missing/);
+});
+
+test("the share page opens on this Mac", async () => {
+  assert.equal((await fetch(`${baseUrl}/broadcast`)).status, 200);
+});
+
+test("the share page is refused to another device", NEEDS_LAN, async () => {
+  assert.equal((await fetch(`${phoneUrl}/broadcast`)).status, 403);
+});
+
+test("broadcast.html cannot bypass the this-Mac check", NEEDS_LAN, async () => {
+  assert.equal((await fetch(`${phoneUrl}/broadcast.html`)).status, 403);
+});
+
+test("screenshot upload is refused to another device", NEEDS_LAN, async () => {
+  const response = await fetch(`${phoneUrl}/api/analyze`, { method: "POST", body: screenshotForm() });
+  assert.equal(response.status, 403);
 });

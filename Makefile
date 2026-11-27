@@ -22,7 +22,7 @@ help:
 	@echo "  make install       Install Node dependencies (npm install)"
 	@echo "  make env           Copy .env.example to .env if .env is missing"
 	@echo "  make test          Run Node API + Swift unit tests"
-	@echo "  make start         Run backend server (foreground)"
+	@echo "  make start         Run the server, open the Mac share page, print the phone address (h.local)"
 	@echo "  make dev           Run backend with nodemon reload"
 	@echo "  make contract      Regenerate Swift prompts/schema from shared/analysis-contract.json"
 	@echo "  make mac-native    swift run (fast; Screen Recording may attach to Cursor/Terminal — avoid if you want app-only permission)"
@@ -40,13 +40,13 @@ install:
 
 env:
 	@test -f .env || cp .env.example .env
-	@echo ".env ready (edit OPENAI_API_KEY and VIEWER_TOKEN)"
+	@echo ".env ready (set OPENAI_API_KEY)"
 
 test:
 	$(NPM) test
 
 start:
-	$(NPM) start
+	OPEN_SHARE_PAGE=1 $(NPM) start
 
 dev:
 	$(NPM) run dev

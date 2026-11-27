@@ -3,6 +3,7 @@ const path = require("path");
 const crypto = require("crypto");
 const express = require("express");
 const multer = require("multer");
+const { execFile } = require("child_process");
 const { createServer } = require("http");
 const { Server } = require("socket.io");
 const OpenAI = require("openai");
@@ -19,8 +20,15 @@ const {
   stripCodeFences,
   withOriginalQuestionIfMissing,
 } = require("./lib/analysis-schema");
+const {
+  PHONE_HOST_NAME,
+  announcePhoneHostName,
+  hostWithPort,
+  isLoopbackAddress,
+  lanAddresses,
+} = require("./lib/local-network");
 
-const DEFAULT_PORT = Number(process.env.PORT) || 3000;
+const DEFAULT_PORT = Number(process.env.PORT) || 80;
 const MODEL = resolveModel(process.env.OPENAI_MODEL);
 const MAX_FILE_SIZE_BYTES = 8 * 1024 * 1024;
 /** One JPEG frame of the screen shared from /broadcast (a 2048px frame is usually well under 1 MB). */
@@ -29,7 +37,7 @@ const MAX_FRAME_BYTES = 3 * 1024 * 1024;
 const MAX_SOCKET_MESSAGE_BYTES = Math.ceil((MAX_FRAME_BYTES * 4) / 3) + 1024;
 const FRAME_MIME_TYPE = "image/jpeg";
 const NO_SHARED_SCREEN_MESSAGE =
-  "No shared screen yet. On the Mac, open /broadcast?token=… and press Start sharing.";
+  "No shared screen yet. On the Mac, run make start and press Start sharing.";
 const ANALYZE_SCHEMA_NAME = "screen_analysis";
 const IMPROVE_SCHEMA_NAME = "screen_analysis_improved";
 const ALLOWED_IMAGE_TYPES = new Set([
@@ -39,8 +47,6 @@ const ALLOWED_IMAGE_TYPES = new Set([
   "image/gif",
 ]);
 const DEFAULT_ANALYZE_PROMPT = process.env.ANALYZE_PROMPT || CONTRACT_ANALYZE_PROMPT;
-const VIEWER_TOKEN =
-  process.env.VIEWER_TOKEN || crypto.randomBytes(12).toString("hex");
 
 const app = express();
 const httpServer = createServer(app);
@@ -67,22 +73,10 @@ let latestFrame = null;
 /** Socket that sent `latestFrame`; when it disconnects (share tab closed) the frame is dropped. */
 let frameSenderId = null;
 
-function tokenFromRequest(req) {
-  return req.get("x-viewer-token") || req.query.token || null;
-}
-
-function isValidToken(token) {
-  if (typeof token !== "string") {
-    return false;
-  }
-  const given = Buffer.from(token);
-  const expected = Buffer.from(VIEWER_TOKEN);
-  return given.length === expected.length && crypto.timingSafeEqual(given, expected);
-}
-
-function requireViewerToken(req, res, next) {
-  if (!isValidToken(tokenFromRequest(req))) {
-    return res.status(401).json({ error: "Unauthorized viewer token." });
+/** Sharing the screen and uploading screenshots are for this Mac only; phones on the Wi-Fi just watch and ask. */
+function requireThisMac(req, res, next) {
+  if (!isLoopbackAddress(req.socket.remoteAddress)) {
+    return res.status(403).json({ error: "Only the Mac running the server can do this." });
   }
   return next();
 }
@@ -161,24 +155,19 @@ function boundPort(fallback) {
   return typeof address === "object" && address ? address.port : fallback;
 }
 
-// Registered before express.static so these pages are never served without a token.
-for (const page of ["viewer", "broadcast"]) {
-  app.get([`/${page}`, `/${page}.html`], requireViewerToken, (_req, res) => {
-    res.sendFile(path.join(__dirname, "public", `${page}.html`));
-  });
+/** Sends public/`page`.html. */
+function sendPage(page) {
+  return (_req, res) => res.sendFile(path.join(__dirname, "public", `${page}.html`));
 }
+
+// The phone opens the bare address (h.local), so the viewer is the home page.
+app.get("/", sendPage("viewer"));
+// Registered before express.static so the share page is never served to another device.
+app.get(["/broadcast", "/broadcast.html"], requireThisMac, sendPage("broadcast"));
 
 app.use(express.static(path.join(__dirname, "public")));
 // Syntax highlighting for the viewer's code block, served locally so the phone needs no internet access.
 app.use("/vendor/highlight", express.static(path.join(__dirname, "node_modules", "@highlightjs", "cdn-assets")));
-
-io.use((socket, next) => {
-  const token = socket.handshake.auth.token || socket.handshake.query.token;
-  if (!isValidToken(token)) {
-    return next(new Error("unauthorized"));
-  }
-  return next();
-});
 
 io.on("connection", (socket) => {
   socket.emit("analysis:update", latestAnalysis);
@@ -188,8 +177,11 @@ io.on("connection", (socket) => {
   } else {
     socket.emit("screen:stop");
   }
-  socket.on("screen:frame", (frame) => receiveFrame(socket, frame));
-  socket.on("screen:stop", clearFrame);
+  // Only the share page on this Mac may change the shared screen; phones only receive it.
+  if (isLoopbackAddress(socket.handshake.address)) {
+    socket.on("screen:frame", (frame) => receiveFrame(socket, frame));
+    socket.on("screen:stop", clearFrame);
+  }
   socket.on("disconnect", () => {
     if (socket.id === frameSenderId) {
       clearFrame();
@@ -202,12 +194,11 @@ app.get("/api/health", (_req, res) => {
     ok: true,
     hasOpenAiKey: Boolean(openai),
     model: MODEL,
-    viewerTokenConfigured: Boolean(process.env.VIEWER_TOKEN),
     port: boundPort(DEFAULT_PORT),
   });
 });
 
-app.get("/api/latest", requireViewerToken, (_req, res) => {
+app.get("/api/latest", (_req, res) => {
   res.json(latestAnalysis);
 });
 
@@ -255,7 +246,7 @@ async function analyzeImage(mimeType, imageBytes, prompt) {
 
 app.post(
   "/api/analyze",
-  requireViewerToken,
+  requireThisMac,
   upload.single("screenshot"),
   requireScreenshot,
   requireOpenAI,
@@ -267,7 +258,6 @@ app.post(
 /** Analyzes the latest frame of the screen shared from /broadcast. */
 app.post(
   "/api/analyze-screen",
-  requireViewerToken,
   requireOpenAI,
   jsonRoute("Failed to analyze the shared screen.", async (req, res) => {
     // 503, not 400: right after a server restart the viewer can reconnect before the Mac's next frame
@@ -281,7 +271,6 @@ app.post(
 
 app.post(
   "/api/improve",
-  requireViewerToken,
   requireOpenAI,
   jsonRoute("Failed to improve solution.", async (_req, res) => {
     // Snapshot: a concurrent /api/analyze may replace latestAnalysis while we await the model.
@@ -313,7 +302,6 @@ app.post(
 /** Beginner walkthrough of the live analysis, as plain text (same prompt as the Mac app's "Explain simply"). */
 app.post(
   "/api/explain",
-  requireViewerToken,
   requireOpenAI,
   jsonRoute("Failed to explain solution.", async (_req, res) => {
     const current = latestAnalysis;
@@ -330,10 +318,6 @@ app.post(
     return res.json({ id: current.id, explanation });
   }),
 );
-
-app.get("/", (_req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
-});
 
 // Turn multer errors (oversized / non-image upload) into JSON instead of Express's HTML 500.
 app.use((error, _req, res, next) => {
@@ -357,25 +341,34 @@ function startListening(port = DEFAULT_PORT, host = "0.0.0.0") {
 
 module.exports = {
   DEFAULT_PORT,
-  VIEWER_TOKEN,
   httpServer,
   io,
   startListening,
   parseModelOutput,
 };
 
+/** Prints where to open the viewer and the share page; with OPEN_SHARE_PAGE=1 (make start) opens the share page. */
+function announceStarted(port) {
+  // getDisplayMedia needs a secure context; http://localhost counts as one, the h.local address does not.
+  const sharePageUrl = `http://${hostWithPort("localhost", port)}/broadcast`;
+  const [lanAddress] = lanAddresses();
+  console.log("Interview Helper is running.");
+  if (lanAddress) {
+    announcePhoneHostName(port, lanAddress);
+    console.log(`Phone:  ${hostWithPort(PHONE_HOST_NAME, port)}   (if that does not open: http://${hostWithPort(lanAddress, port)})`);
+  } else {
+    console.log("Phone:  not on Wi-Fi or Ethernet, so phones cannot reach this Mac yet. Connect and restart.");
+  }
+  console.log(`Mac:    ${sharePageUrl}   (press Start sharing there)`);
+  console.log("If the phone cannot open it, allow Node through the firewall: System Settings → Network → Firewall.");
+  if (process.env.OPEN_SHARE_PAGE === "1") {
+    execFile("open", [sharePageUrl]);
+  }
+}
+
 if (require.main === module) {
-  console.log(`Viewer token: ${VIEWER_TOKEN}`);
   startListening()
-    .then(({ port }) => {
-      console.log(`Interview Helper listening on http://localhost:${port}`);
-      console.log(`Viewer (phone/tablet): http://<this-mac>.local:${port}/viewer?token=${VIEWER_TOKEN}`);
-      // getDisplayMedia needs a secure context; http://localhost counts as one, the .local address does not.
-      console.log(`Share this Mac's screen (open on this Mac): http://localhost:${port}/broadcast?token=${VIEWER_TOKEN}`);
-      console.log(
-        "If another device cannot open the viewer URL, allow Node through the firewall: System Settings → Network → Firewall.",
-      );
-    })
+    .then(({ port }) => announceStarted(port))
     .catch((error) => {
       console.error("Failed to start server:", error);
       process.exit(1);

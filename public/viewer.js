@@ -16,7 +16,6 @@ const actionStatusEl = document.getElementById("actionStatus");
 const explainedCardEl = document.getElementById("explainedCard");
 const explainedEl = document.getElementById("explained");
 const connectionStatusEl = document.getElementById("connectionStatus");
-const viewerToken = new URLSearchParams(window.location.search).get("token");
 /** After this long without a new frame the picture is flagged as not live. */
 const STALE_FRAME_MS = 5000;
 const STALE_CHECK_INTERVAL_MS = 1000;
@@ -144,7 +143,7 @@ function waitForConnection(timeoutMs) {
 async function postJSON(route, body) {
   const response = await fetch(route, {
     method: "POST",
-    headers: { "x-viewer-token": viewerToken, "content-type": "application/json" },
+    headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
   const payload = await response.json();
@@ -229,25 +228,15 @@ function reconnectAfterLongHide() {
 }
 
 function connect() {
-  if (!viewerToken) {
-    showConnection("Missing token: open the full viewer link printed by npm start.", true);
-    return;
-  }
   // socket.io reconnects by itself (1s, then up to 5s between tries, forever); on every (re)connect the
   // server pushes the latest analysis and shared-screen frame, so the page resyncs with no reload.
-  socket = io({ auth: { token: viewerToken } });
+  socket = io();
   socket.on("analysis:update", renderAnalysis);
   socket.on("screen:frame", renderFrame);
   socket.on("screen:stop", clearFrame);
   socket.on("connect", () => showConnection("Connected", false));
   socket.on("disconnect", () => showConnection("Connection lost · reconnecting…", true));
-  socket.on("connect_error", (error) => {
-    // The server rejected the token: socket.io stops retrying, and so do we.
-    const text = error.message === "unauthorized"
-      ? "Invalid viewer token: open the link printed by npm start again."
-      : "Cannot reach the server · retrying…";
-    showConnection(text, true);
-  });
+  socket.on("connect_error", () => showConnection("Cannot reach the server · retrying…", true));
   document.addEventListener("visibilitychange", reconnectAfterLongHide);
   setInterval(updateLiveStatus, STALE_CHECK_INTERVAL_MS);
   analyzeScreenBtn.addEventListener("click", analyzeScreen);

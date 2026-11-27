@@ -8,10 +8,9 @@ const JPEG_QUALITY = 0.8;
 const shareBtn = document.getElementById("shareBtn");
 const shareStatusEl = document.getElementById("shareStatus");
 const connectionStatusEl = document.getElementById("connectionStatus");
-const viewerToken = new URLSearchParams(window.location.search).get("token");
 const video = document.createElement("video");
 const canvas = document.createElement("canvas");
-const socket = io({ auth: { token: viewerToken } });
+const socket = io();
 let stream = null;
 let frameTimer = null;
 let isEncoding = false;
@@ -83,12 +82,9 @@ async function startSharing() {
 
 shareBtn.addEventListener("click", () => (stream ? stopSharing() : startSharing()));
 
-if (!viewerToken) {
+if (!navigator.mediaDevices?.getDisplayMedia) {
   shareBtn.disabled = true;
-  shareStatusEl.textContent = "Missing token in URL: open the /broadcast?token=… link printed by npm start.";
-} else if (!navigator.mediaDevices?.getDisplayMedia) {
-  shareBtn.disabled = true;
-  shareStatusEl.textContent = "Screen sharing needs a desktop browser opened at http://localhost (not the .local address).";
+  shareStatusEl.textContent = "Screen sharing needs a desktop browser opened at http://localhost (not h.local).";
 }
 
 function showConnection(text, isOffline) {
@@ -105,9 +101,4 @@ socket.on("connect", () => {
   }
 });
 socket.on("disconnect", () => showConnection("Connection lost · reconnecting… (still sharing; frames resume automatically)", true));
-socket.on("connect_error", (error) => {
-  const text = error.message === "unauthorized"
-    ? "Invalid token: open the share link printed by npm start again."
-    : "Cannot reach the server · retrying… (still sharing)";
-  showConnection(text, true);
-});
+socket.on("connect_error", () => showConnection("Cannot reach the server · retrying… (still sharing)", true));
